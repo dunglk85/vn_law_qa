@@ -33,6 +33,9 @@ class AppConfig:
     retriever_type: str = os.getenv("RETRIEVER_TYPE", "dense")
     # dense | bm25 | hybrid_interleaving | hybrid_rrf
 
+    query_transformer_type: str = os.getenv("QUERY_TRANSFORMER_TYPE", "none")
+    # none | hyde | decomposition | hyde_decomposition
+
     # ------------------------------------------------------------------
     # Connection strings
     # ------------------------------------------------------------------

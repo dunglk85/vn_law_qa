@@ -19,6 +19,7 @@ from app.ports.reranker import RerankerPort
 from app.ports.cache import CachePort
 from app.ports.chunking import ChunkingPort
 from app.ports.retriever import RetrieverPort
+from app.ports.query_transformer import QueryTransformerPort
 
 
 # --------------------------------------------------------------------------- #
@@ -189,4 +190,30 @@ def create_retriever(vector_store: VectorStorePort) -> RetrieverPort:
             raise ValueError(
                 f"Unknown RETRIEVER_TYPE='{config.retriever_type}'. "
                 "Supported: dense, bm25, hybrid_interleaving, hybrid_rrf"
+            )
+
+
+# --------------------------------------------------------------------------- #
+# Query Transformer                                                            #
+# --------------------------------------------------------------------------- #
+
+def create_query_transformer(llm: LLMPort) -> QueryTransformerPort:
+    match config.query_transformer_type:
+        case "none":
+            from app.adapters.query_transformers.none_transformer import NoneQueryTransformerAdapter
+            return NoneQueryTransformerAdapter()
+        case "hyde":
+            from app.adapters.query_transformers.hyde_transformer import HyDEQueryTransformerAdapter
+            return HyDEQueryTransformerAdapter(llm.get_chat_model())
+        case "decomposition":
+            from app.adapters.query_transformers.decomposition_transformer import DecompositionQueryTransformerAdapter
+            return DecompositionQueryTransformerAdapter(llm.get_chat_model())
+        case "hyde_decomposition":
+            from app.adapters.query_transformers.hyde_decomposition_transformer import HyDEDecompositionQueryTransformerAdapter
+            return HyDEDecompositionQueryTransformerAdapter(llm.get_chat_model())
+        # ── add new providers below ──────────────────────────────────────────
+        case _:
+            raise ValueError(
+                f"Unknown QUERY_TRANSFORMER_TYPE='{config.query_transformer_type}'. "
+                "Supported: none, hyde, decomposition, hyde_decomposition"
             )

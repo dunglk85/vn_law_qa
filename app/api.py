@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app.factory import create_cache, create_chunker, create_embeddings, create_llm, create_reranker, create_retriever, create_vector_store
+from app.factory import create_cache, create_chunker, create_embeddings, create_llm, create_query_transformer, create_reranker, create_retriever, create_vector_store
 from app.core.ingest_service import run_ingest
 from app.core.rag_service import RAGService
 
@@ -36,6 +36,7 @@ _reranker = create_reranker()
 _cache = create_cache(embeddings=_embeddings)
 _chunker = create_chunker(embeddings=_embeddings)
 _retriever = create_retriever(vector_store=_vector_store)
+_query_transformer = create_query_transformer(llm=_llm)
 
 # Activate LLM cache (e.g. Redis semantic cache, or no-op)
 _cache.apply()
@@ -46,6 +47,7 @@ _rag_service = RAGService(
     llm=_llm,
     reranker=_reranker,
     retriever=_retriever,
+    query_transformer=_query_transformer,
 )
 
 # --------------------------------------------------------------------------- #

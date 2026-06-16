@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -18,6 +19,7 @@ from app.ports.vector_store import VectorStorePort
 from app.ports.llm import LLMPort
 from app.ports.reranker import RerankerPort
 from app.ports.retriever import RetrieverPort
+from app.ports.query_transformer import QueryTransformerPort
 
 
 # --------------------------------------------------------------------------- #
@@ -58,11 +60,13 @@ class RAGService:
         llm: LLMPort,
         reranker: RerankerPort,
         retriever: RetrieverPort,
+        query_transformer: QueryTransformerPort,
     ) -> None:
         self._vector_store = vector_store
         self._llm = llm
         self._reranker = reranker
         self._retriever = retriever
+        self._query_transformer = query_transformer
 
     def _build_retriever(self, category: Optional[str]):
         base_retriever = self._retriever.get_retriever()
@@ -74,6 +78,25 @@ class RAGService:
                 base_compressor=compressor,
             )
         return base_retriever
+
+    async def _retrieve_with_transformed_queries(
+        self,
+        retriever: BaseRetriever,
+        queries: List[str],
+    ) -> List[Document]:
+        """Retrieve documents for multiple queries and deduplicate."""
+        all_docs: List[Document] = []
+        seen_content: set = set()
+
+        for query in queries:
+            docs = await retriever.ainvoke(query)
+            for doc in docs:
+                content_hash = hash(doc.page_content)
+                if content_hash not in seen_content:
+                    all_docs.append(doc)
+                    seen_content.add(content_hash)
+
+        return all_docs[:config.retrieval_k]
 
     async def answer(
         self,
@@ -91,19 +114,28 @@ class RAGService:
             sources   — sorted list of unique source file paths
             contexts  — list of retrieved chunk texts (for evaluation)
         """
-        # Ensure the underlying store is initialised before calling as_retriever()
         await self._vector_store.similarity_search("warmup", k=1)
 
+        transformed_queries = await self._query_transformer.transform(question)
+
         retriever = self._build_retriever(category)
-        chat_model = self._llm.get_chat_model()
 
-        doc_chain = create_stuff_documents_chain(chat_model, _PROMPT)
-        rag_chain = create_retrieval_chain(retriever, doc_chain)
+        if len(transformed_queries) > 1:
+            docs = await self._retrieve_with_transformed_queries(retriever, transformed_queries)
+            chat_model = self._llm.get_chat_model()
 
-        result = await rag_chain.ainvoke({"input": question})
+            doc_chain = create_stuff_documents_chain(chat_model, _PROMPT)
+            result = await doc_chain.ainvoke({"input": question, "context": docs})
 
-        answer: str = result["answer"]
-        docs: List[Document] = result["context"]
+            answer: str = result
+        else:
+            chat_model = self._llm.get_chat_model()
+            doc_chain = create_stuff_documents_chain(chat_model, _PROMPT)
+            rag_chain = create_retrieval_chain(retriever, doc_chain)
+
+            result = await rag_chain.ainvoke({"input": question})
+            answer = result["answer"]
+            docs = result["context"]
 
         sources = sorted({
             d.metadata.get("source")
