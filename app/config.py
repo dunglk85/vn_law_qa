@@ -22,7 +22,7 @@ class AppConfig:
     # openai | huggingface
 
     reranker_type: str = os.getenv("RERANKER_TYPE", "cohere")
-    # cohere | none
+    # cohere | cross_encoder | mmr | none
 
     cache_type: str = os.getenv("CACHE_TYPE", "redis")
     # redis | none
@@ -62,6 +62,7 @@ class AppConfig:
     retrieval_k: int = int(os.getenv("RETRIEVAL_K", "5"))
     rrf_k: int = int(os.getenv("RRF_K", "60"))
     reranker_top_n: int = int(os.getenv("RERANKER_TOP_N", "3"))
+    mmr_lambda_mult: float = float(os.getenv("MMR_LAMBDA_MULT", "0.5"))
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "900"))
     chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "120"))
     semantic_breakpoint_threshold_type: str = os.getenv("SEMANTIC_BREAKPOINT_THRESHOLD_TYPE", "percentile")

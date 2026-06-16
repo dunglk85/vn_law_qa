@@ -90,13 +90,27 @@ def create_llm() -> LLMPort:
 # Reranker                                                                     #
 # --------------------------------------------------------------------------- #
 
-def create_reranker() -> RerankerPort:
+def create_reranker(embeddings: EmbeddingsPort | None = None) -> RerankerPort:
     match config.reranker_type:
         case "cohere":
             from app.adapters.rerankers.cohere_reranker import CohereRerankerAdapter
             return CohereRerankerAdapter(
                 model=config.reranker_model,
                 top_n=config.reranker_top_n,
+            )
+        case "cross_encoder":
+            from app.adapters.rerankers.cross_encoder_reranker import CrossEncoderRerankerAdapter
+            return CrossEncoderRerankerAdapter(
+                model=config.reranker_model,
+                top_n=config.reranker_top_n,
+            )
+        case "mmr":
+            from app.adapters.rerankers.mmr_reranker import MMRRerankerAdapter
+            embeddings_port = embeddings or create_embeddings()
+            return MMRRerankerAdapter(
+                embeddings=embeddings_port.get_embeddings(),
+                top_n=config.reranker_top_n,
+                lambda_mult=config.mmr_lambda_mult,
             )
         case "none":
             from app.adapters.rerankers.none_reranker import NoneRerankerAdapter
@@ -108,7 +122,7 @@ def create_reranker() -> RerankerPort:
         case _:
             raise ValueError(
                 f"Unknown RERANKER_TYPE='{config.reranker_type}'. "
-                "Supported: cohere, none"
+                "Supported: cohere, cross_encoder, mmr, none"
             )
 
 
