@@ -84,6 +84,18 @@ class PGVectorStoreAdapter(VectorStorePort):
         return wrapper  # type: ignore
 
     async def create_index(self) -> None:
+        match config.index_type:
+            case "hnsw":
+                await self._create_hnsw_index()
+            case "ivfflat":
+                await self._create_ivfflat_index()
+            case _:
+                raise ValueError(
+                    f"Unknown INDEX_TYPE='{config.index_type}'. "
+                    "Supported: hnsw, ivfflat"
+                )
+
+    async def _create_hnsw_index(self) -> None:
         conn_str = self._connection_string.replace("postgresql+psycopg://", "postgresql://")
         index_name = f"hnsw_{self.COLLECTION_NAME}_embedding_idx"
 
@@ -109,3 +121,33 @@ class PGVectorStoreAdapter(VectorStorePort):
                     print(f"PGVECTOR: HNSW index '{index_name}' created successfully.")
         except Exception as exc:
             print(f"PGVECTOR: HNSW index creation failed: {exc}")
+
+    async def _create_ivfflat_index(self) -> None:
+        conn_str = self._connection_string.replace("postgresql+psycopg://", "postgresql://")
+        index_name = f"ivfflat_{self.COLLECTION_NAME}_embedding_idx"
+
+        try:
+            with psycopg.connect(conn_str) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE tablename = 'langchain_pg_embedding' AND indexname = %s",
+                        (index_name,),
+                    )
+                    if cur.fetchone():
+                        print(f"PGVECTOR: IVFFlat index '{index_name}' already exists.")
+                        return
+
+                    cur.execute(
+                        f"CREATE INDEX {index_name} "
+                        "ON langchain_pg_embedding USING ivfflat (embedding vector_cosine_ops) "
+                        "WITH (lists = %s)",
+                        (config.ivfflat_lists,),
+                    )
+                    conn.commit()
+
+                    cur.execute("SET ivfflat.probes = %s", (config.ivfflat_probes,))
+                    conn.commit()
+                    print(f"PGVECTOR: IVFFlat index '{index_name}' created successfully (lists={config.ivfflat_lists}, probes={config.ivfflat_probes}).")
+        except Exception as exc:
+            print(f"PGVECTOR: IVFFlat index creation failed: {exc}")

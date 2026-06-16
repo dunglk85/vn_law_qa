@@ -72,10 +72,16 @@ class AppConfig:
     data_dir: str = os.getenv("DATA_DIR", "data")
 
     # ------------------------------------------------------------------
-    # HNSW index parameters (pgvector)
+    # Index parameters (pgvector)
     # ------------------------------------------------------------------
+    index_type: str = os.getenv("INDEX_TYPE", "hnsw")
+    # hnsw | ivfflat
+
     hnsw_m: int = int(os.getenv("HNSW_M", "16"))
     hnsw_ef_construction: int = int(os.getenv("HNSW_EF_CONSTRUCTION", "64"))
+
+    ivfflat_lists: int = int(os.getenv("IVFFLAT_LISTS", "100"))
+    ivfflat_probes: int = int(os.getenv("IVFFLAT_PROBES", "10"))
 
 
 # Singleton — import this everywhere instead of reading os.getenv directly
