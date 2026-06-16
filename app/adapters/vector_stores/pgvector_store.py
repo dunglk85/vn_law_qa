@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import List, Optional
 import asyncio
 
+import psycopg
 from langchain_postgres import PGVector
 from langchain_core.documents import Document
 from langchain_core.vectorstores import VectorStoreRetriever
@@ -10,6 +11,7 @@ from langchain_core.callbacks import CallbackManagerForRetrieverRun
 
 from app.ports.vector_store import VectorStorePort
 from app.ports.embeddings import EmbeddingsPort
+from app.config import config
 
 
 class _SyncRetriever(BaseRetriever):
@@ -82,4 +84,28 @@ class PGVectorStoreAdapter(VectorStorePort):
         return wrapper  # type: ignore
 
     async def create_index(self) -> None:
-        print("PGVECTOR: Index creation skipped (using default index).")
+        conn_str = self._connection_string.replace("postgresql+psycopg://", "postgresql://")
+        index_name = f"hnsw_{self.COLLECTION_NAME}_embedding_idx"
+
+        try:
+            with psycopg.connect(conn_str) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE tablename = 'langchain_pg_embedding' AND indexname = %s",
+                        (index_name,),
+                    )
+                    if cur.fetchone():
+                        print(f"PGVECTOR: HNSW index '{index_name}' already exists.")
+                        return
+
+                    cur.execute(
+                        f"CREATE INDEX {index_name} "
+                        "ON langchain_pg_embedding USING hnsw (embedding vector_cosine_ops) "
+                        "WITH (m = %s, ef_construction = %s)",
+                        (config.hnsw_m, config.hnsw_ef_construction),
+                    )
+                    conn.commit()
+                    print(f"PGVECTOR: HNSW index '{index_name}' created successfully.")
+        except Exception as exc:
+            print(f"PGVECTOR: HNSW index creation failed: {exc}")

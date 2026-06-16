@@ -58,6 +58,12 @@ class AppConfig:
 
     data_dir: str = os.getenv("DATA_DIR", "data")
 
+    # ------------------------------------------------------------------
+    # HNSW index parameters (pgvector)
+    # ------------------------------------------------------------------
+    hnsw_m: int = int(os.getenv("HNSW_M", "16"))
+    hnsw_ef_construction: int = int(os.getenv("HNSW_EF_CONSTRUCTION", "64"))
+
 
 # Singleton — import this everywhere instead of reading os.getenv directly
 config = AppConfig()
