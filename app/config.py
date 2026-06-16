@@ -34,6 +34,13 @@ class AppConfig:
     redis_url: str = os.getenv("REDIS_URL", "")
 
     # ------------------------------------------------------------------
+    # API Keys
+    # ------------------------------------------------------------------
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    cohere_api_key: str = os.getenv("CO_API_KEY", "")
+    langsmith_api_key: str = os.getenv("LANGSMITH_API_KEY", "")
+
+    # ------------------------------------------------------------------
     # Model names
     # ------------------------------------------------------------------
     llm_model: str = os.getenv("LLM_MODEL", "gpt-4o-mini")

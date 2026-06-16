@@ -2,6 +2,7 @@ from __future__ import annotations
 from langchain_openai import ChatOpenAI
 from langchain_core.language_models import BaseChatModel
 
+from app.config import config
 from app.ports.llm import LLMPort
 
 
@@ -12,4 +13,4 @@ class OpenAILLMAdapter(LLMPort):
         self._model = model
 
     def get_chat_model(self) -> BaseChatModel:
-        return ChatOpenAI(model=self._model)
+        return ChatOpenAI(model=self._model, openai_api_key=config.openai_api_key)

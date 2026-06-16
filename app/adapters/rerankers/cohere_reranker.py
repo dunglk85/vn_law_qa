@@ -4,6 +4,7 @@ from typing import Optional
 from langchain_cohere import CohereRerank
 from langchain_core.documents.compressor import BaseDocumentCompressor
 
+from app.config import config
 from app.ports.reranker import RerankerPort
 
 
@@ -19,4 +20,8 @@ class CohereRerankerAdapter(RerankerPort):
         self._top_n = top_n
 
     def get_compressor(self) -> Optional[BaseDocumentCompressor]:
-        return CohereRerank(model=self._model, top_n=self._top_n)
+        return CohereRerank(
+            model=self._model,
+            top_n=self._top_n,
+            cohere_api_key=config.cohere_api_key,
+        )

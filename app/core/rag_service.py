@@ -7,10 +7,10 @@ It depends only on Port interfaces injected at construction time.
 from __future__ import annotations
 from typing import List, Optional, Tuple
 
-from langchain_classic.chains import create_retrieval_chain
-from langchain_classic.chains.combine_documents import create_stuff_documents_chain
-from langchain_classic.docstore.document import Document
-from langchain_classic.retrievers import ContextualCompressionRetriever
+from langchain.chains import create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.documents import Document
+from langchain.retrievers import ContextualCompressionRetriever
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.config import config

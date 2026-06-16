@@ -10,7 +10,7 @@ import os
 import traceback
 from typing import List
 
-from langchain_classic.docstore.document import Document
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
     UnstructuredMarkdownLoader,

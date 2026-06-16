@@ -1,36 +1,33 @@
 # Core
-fastapi
-uvicorn
-python-dotenv
-pandas
-tiktoken
+fastapi>=0.115.0,<0.116.0
+uvicorn>=0.30.0,<0.31.0
+python-dotenv>=1.0.0,<1.1.0
+pandas>=2.2.0,<2.3.0
+tiktoken>=0.7.0,<0.8.0
 
 # DB / pool
-psycopg[binary,pool]
+psycopg[binary,pool]>=3.2.0,<3.3.0
 
 # Ingestion helpers
-unstructured
-unstructured[pdf]
-unstructured[docx]
-unstructured[image]
-markdown
-pytesseract
-pymupdf
+unstructured>=0.15.0,<0.16.0
+markdown>=3.6.0,<3.7.0
+pytesseract>=0.3.10,<0.4.0
+pymupdf>=1.24.0,<1.25.0
 
-#Langchain
-langchain
-langchain-openai
-langchain-community
-langchain-text-splitters
-langchain-postgres
+# Langchain
+langchain>=0.3.0,<0.4.0
+langchain-openai>=0.2.0,<0.3.0
+langchain-community>=0.3.0,<0.4.0
+langchain-text-splitters>=0.3.0,<0.4.0
+langchain-postgres>=0.0.12,<0.0.13
 
-#Caching
-redis
-langchain-redis
+# Caching
+redis>=5.0.0,<5.1.0
+langchain-redis>=0.1.0,<0.2.0
 
-#Re-Ranking
-cohere
-langchain-cohere
+# Re-Ranking
+cohere>=5.9.0,<5.10.0
+langchain-cohere>=0.3.0,<0.4.0
 
-#Evals
-ragas
+# Evals
+ragas>=0.2.0,<0.3.0

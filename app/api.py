@@ -98,8 +98,8 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-@app.post("/ingest")
-async def kick_off_ingest() -> dict | JSONResponse:
+@app.post("/ingest", response_model=None)
+async def kick_off_ingest():
     global _ingest_task
     async with _ingest_lock:
         if _ingest_task and not _ingest_task.done():
