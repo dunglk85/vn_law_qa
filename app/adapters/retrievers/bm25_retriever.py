@@ -1,0 +1,49 @@
+from __future__ import annotations
+from typing import List, Optional
+
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
+from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
+from langchain_community.retrievers import BM25Retriever
+
+from app.ports.retriever import RetrieverPort
+
+
+class _BM25LangChainRetriever(BaseRetriever):
+    """Wrapper around BM25Retriever to support async."""
+    _bm25: BM25Retriever
+    _k: int
+
+    def _get_relevant_documents(
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> List[Document]:
+        self._bm25.k = self._k
+        return self._bm25.invoke(query)
+
+    async def _aget_relevant_documents(
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> List[Document]:
+        return self._get_relevant_documents(query, run_manager=run_manager)
+
+
+class BM25RetrieverAdapter(RetrieverPort):
+    """Sparse retrieval using BM25 (Best Match 25) algorithm.
+
+    Uses term frequency-inverse document frequency (TF-IDF) scoring
+    for keyword-based retrieval without semantic understanding.
+    """
+
+    def __init__(self, k: int = 5) -> None:
+        self._k = k
+        self._bm25: Optional[BM25Retriever] = None
+
+    def build_index(self, documents: List[Document]) -> None:
+        self._bm25 = BM25Retriever.from_documents(documents)
+
+    def get_retriever(self) -> BaseRetriever:
+        if self._bm25 is None:
+            raise RuntimeError("BM25RetrieverAdapter: index not built. Call build_index() first.")
+        wrapper = _BM25LangChainRetriever()
+        wrapper._bm25 = self._bm25
+        wrapper._k = self._k
+        return wrapper

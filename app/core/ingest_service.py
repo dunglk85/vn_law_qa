@@ -2,7 +2,7 @@
 
 Ingestion business logic — loads, chunks, and stores documents.
 This module knows NOTHING about PGVector, OpenAI, or any concrete provider.
-It depends only on VectorStorePort and ChunkingPort (the abstract interfaces).
+It depends only on VectorStorePort, ChunkingPort, and RetrieverPort (the abstract interfaces).
 """
 from __future__ import annotations
 import glob
@@ -28,6 +28,7 @@ except ImportError:
 from app.config import config
 from app.ports.vector_store import VectorStorePort
 from app.ports.chunking import ChunkingPort
+from app.ports.retriever import RetrieverPort
 
 
 # --------------------------------------------------------------------------- #
@@ -75,12 +76,17 @@ def _load_docs(base: str = config.data_dir) -> List[Document]:
 # Public service function                                                      #
 # --------------------------------------------------------------------------- #
 
-async def run_ingest(vector_store: VectorStorePort, chunker: ChunkingPort) -> dict:
+async def run_ingest(
+    vector_store: VectorStorePort,
+    chunker: ChunkingPort,
+    retriever: RetrieverPort,
+) -> dict:
     """Full ingestion pipeline.
 
     Args:
         vector_store: Any VectorStorePort implementation injected by the caller.
         chunker: Any ChunkingPort implementation injected by the caller.
+        retriever: Any RetrieverPort implementation injected by the caller.
 
     Returns:
         dict with 'documents' and 'chunks' counts.
@@ -98,5 +104,7 @@ async def run_ingest(vector_store: VectorStorePort, chunker: ChunkingPort) -> di
     print(f"INGEST: {len(docs)} docs → {len(chunks)} chunks stored.")
 
     await vector_store.create_index()
+
+    retriever.build_index(chunks)
 
     return {"documents": len(docs), "chunks": len(chunks)}

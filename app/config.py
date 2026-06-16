@@ -30,6 +30,9 @@ class AppConfig:
     chunker_type: str = os.getenv("CHUNKER_TYPE", "recursive")
     # recursive | semantic
 
+    retriever_type: str = os.getenv("RETRIEVER_TYPE", "dense")
+    # dense | bm25 | hybrid_interleaving | hybrid_rrf
+
     # ------------------------------------------------------------------
     # Connection strings
     # ------------------------------------------------------------------
@@ -54,6 +57,7 @@ class AppConfig:
     # RAG tuning parameters
     # ------------------------------------------------------------------
     retrieval_k: int = int(os.getenv("RETRIEVAL_K", "5"))
+    rrf_k: int = int(os.getenv("RRF_K", "60"))
     reranker_top_n: int = int(os.getenv("RERANKER_TOP_N", "3"))
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "900"))
     chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "120"))

@@ -17,6 +17,7 @@ from app.config import config
 from app.ports.vector_store import VectorStorePort
 from app.ports.llm import LLMPort
 from app.ports.reranker import RerankerPort
+from app.ports.retriever import RetrieverPort
 
 
 # --------------------------------------------------------------------------- #
@@ -56,21 +57,15 @@ class RAGService:
         vector_store: VectorStorePort,
         llm: LLMPort,
         reranker: RerankerPort,
+        retriever: RetrieverPort,
     ) -> None:
         self._vector_store = vector_store
         self._llm = llm
         self._reranker = reranker
-
-    async def _ensure_store_ready(self, category: Optional[str]) -> None:
-        """Warm up the store so as_retriever() works synchronously."""
-        await self._vector_store.similarity_search("warmup", k=1)
+        self._retriever = retriever
 
     def _build_retriever(self, category: Optional[str]):
-        search_kwargs: dict = {"k": config.retrieval_k}
-        if category:
-            search_kwargs["filter"] = {"category": category}
-
-        base_retriever = self._vector_store.as_retriever(search_kwargs=search_kwargs)
+        base_retriever = self._retriever.get_retriever()
 
         compressor = self._reranker.get_compressor()
         if compressor is not None:
@@ -97,7 +92,7 @@ class RAGService:
             contexts  — list of retrieved chunk texts (for evaluation)
         """
         # Ensure the underlying store is initialised before calling as_retriever()
-        await self._ensure_store_ready(category)
+        await self._vector_store.similarity_search("warmup", k=1)
 
         retriever = self._build_retriever(category)
         chat_model = self._llm.get_chat_model()
