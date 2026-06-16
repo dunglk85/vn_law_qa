@@ -17,6 +17,7 @@ from app.ports.vector_store import VectorStorePort
 from app.ports.llm import LLMPort
 from app.ports.reranker import RerankerPort
 from app.ports.cache import CachePort
+from app.ports.chunking import ChunkingPort
 
 
 # --------------------------------------------------------------------------- #
@@ -130,4 +131,32 @@ def create_cache(embeddings: EmbeddingsPort | None = None) -> CachePort:
             raise ValueError(
                 f"Unknown CACHE_TYPE='{config.cache_type}'. "
                 "Supported: redis, none"
+            )
+
+
+# --------------------------------------------------------------------------- #
+# Chunking                                                                     #
+# --------------------------------------------------------------------------- #
+
+def create_chunker(embeddings: EmbeddingsPort | None = None) -> ChunkingPort:
+    match config.chunker_type:
+        case "recursive":
+            from app.adapters.chunkers.recursive_chunker import RecursiveChunkerAdapter
+            return RecursiveChunkerAdapter(
+                chunk_size=config.chunk_size,
+                chunk_overlap=config.chunk_overlap,
+            )
+        case "semantic":
+            from app.adapters.chunkers.semantic_chunker import SemanticChunkerAdapter
+            embeddings_port = embeddings or create_embeddings()
+            return SemanticChunkerAdapter(
+                embeddings=embeddings_port.get_embeddings(),
+                breakpoint_threshold_type=config.semantic_breakpoint_threshold_type,
+                breakpoint_threshold_amount=config.semantic_breakpoint_threshold_amount,
+            )
+        # ── add new providers below ──────────────────────────────────────────
+        case _:
+            raise ValueError(
+                f"Unknown CHUNKER_TYPE='{config.chunker_type}'. "
+                "Supported: recursive, semantic"
             )

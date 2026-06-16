@@ -27,6 +27,9 @@ class AppConfig:
     cache_type: str = os.getenv("CACHE_TYPE", "redis")
     # redis | none
 
+    chunker_type: str = os.getenv("CHUNKER_TYPE", "recursive")
+    # recursive | semantic
+
     # ------------------------------------------------------------------
     # Connection strings
     # ------------------------------------------------------------------
@@ -54,6 +57,8 @@ class AppConfig:
     reranker_top_n: int = int(os.getenv("RERANKER_TOP_N", "3"))
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "900"))
     chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "120"))
+    semantic_breakpoint_threshold_type: str = os.getenv("SEMANTIC_BREAKPOINT_THRESHOLD_TYPE", "percentile")
+    semantic_breakpoint_threshold_amount: float = float(os.getenv("SEMANTIC_BREAKPOINT_THRESHOLD_AMOUNT", "95.0"))
     cache_distance_threshold: float = float(os.getenv("CACHE_DISTANCE_THRESHOLD", "0.98"))
 
     data_dir: str = os.getenv("DATA_DIR", "data")

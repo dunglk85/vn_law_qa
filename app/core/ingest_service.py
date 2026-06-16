@@ -2,7 +2,7 @@
 
 Ingestion business logic — loads, chunks, and stores documents.
 This module knows NOTHING about PGVector, OpenAI, or any concrete provider.
-It depends only on VectorStorePort (the abstract interface).
+It depends only on VectorStorePort and ChunkingPort (the abstract interfaces).
 """
 from __future__ import annotations
 import glob
@@ -11,7 +11,6 @@ import traceback
 from typing import List
 
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
     UnstructuredMarkdownLoader,
     PyMuPDFLoader,
@@ -28,6 +27,7 @@ except ImportError:
 
 from app.config import config
 from app.ports.vector_store import VectorStorePort
+from app.ports.chunking import ChunkingPort
 
 
 # --------------------------------------------------------------------------- #
@@ -72,38 +72,27 @@ def _load_docs(base: str = config.data_dir) -> List[Document]:
 
 
 # --------------------------------------------------------------------------- #
-# Chunking                                                                     #
-# --------------------------------------------------------------------------- #
-
-def _chunk(docs: List[Document]) -> List[Document]:
-    """Split documents into overlapping chunks."""
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=config.chunk_size,
-        chunk_overlap=config.chunk_overlap,
-    )
-    try:
-        return splitter.split_documents(docs)
-    except Exception:
-        print("INGEST ERROR: chunking failed")
-        traceback.print_exc()
-        raise
-
-
-# --------------------------------------------------------------------------- #
 # Public service function                                                      #
 # --------------------------------------------------------------------------- #
 
-async def run_ingest(vector_store: VectorStorePort) -> dict:
+async def run_ingest(vector_store: VectorStorePort, chunker: ChunkingPort) -> dict:
     """Full ingestion pipeline.
 
     Args:
         vector_store: Any VectorStorePort implementation injected by the caller.
+        chunker: Any ChunkingPort implementation injected by the caller.
 
     Returns:
         dict with 'documents' and 'chunks' counts.
     """
     docs = _load_docs()
-    chunks = _chunk(docs)
+
+    try:
+        chunks = chunker.chunk(docs)
+    except Exception:
+        print("INGEST ERROR: chunking failed")
+        traceback.print_exc()
+        raise
 
     await vector_store.add_documents(chunks)
     print(f"INGEST: {len(docs)} docs → {len(chunks)} chunks stored.")
