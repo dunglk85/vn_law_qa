@@ -15,9 +15,16 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
     UnstructuredMarkdownLoader,
     PyMuPDFLoader,
-    UnstructuredWordDocumentLoader,
+    Docx2txtLoader,
     TextLoader,
 )
+
+# Patch unstructured to skip NLTK download check (we pre-bundle the data)
+try:
+    import unstructured.nlp.tokenize
+    unstructured.nlp.tokenize.download_nltk_packages = lambda: None
+except ImportError:
+    pass
 
 from app.config import config
 from app.ports.vector_store import VectorStorePort
@@ -47,7 +54,7 @@ def _load_docs(base: str = config.data_dir) -> List[Document]:
                 case ".pdf":
                     loaded = PyMuPDFLoader(path).load()
                 case ".docx":
-                    loaded = UnstructuredWordDocumentLoader(path).load()
+                    loaded = Docx2txtLoader(path).load()
                 case ".txt":
                     loaded = TextLoader(path).load()
                 case _:

@@ -3,7 +3,10 @@ FROM python:3.11-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
+    PIP_TRUSTED_HOST=mirrors.aliyun.com \
+    NLTK_DATA=/root/nltk_data
 
 # System deps (curl for healthchecks/logs; build deps minimal since we use psycopg binary)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -15,6 +18,9 @@ WORKDIR /app
 # Copy only requirements first (better layer caching)
 COPY requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip && pip install -r requirements.txt
+
+# Pre-download NLTK data
+RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('averaged_perceptron_tagger'); nltk.download('averaged_perceptron_tagger_eng')"
 
 # Copy project files
 COPY app/ /app/app/
