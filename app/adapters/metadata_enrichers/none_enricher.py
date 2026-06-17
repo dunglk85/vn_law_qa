@@ -12,5 +12,5 @@ class NoneEnricherAdapter(MetadataEnrichmentPort):
     Use by setting METADATA_ENRICHER_TYPE=none in .env.
     """
 
-    def enrich(self, documents: List[Document]) -> List[Document]:
+    async def enrich(self, documents: List[Document]) -> List[Document]:
         return documents

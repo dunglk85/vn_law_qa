@@ -14,7 +14,7 @@ class MetadataEnrichmentPort(ABC):
     """
 
     @abstractmethod
-    def enrich(self, documents: List[Document]) -> List[Document]:
+    async def enrich(self, documents: List[Document]) -> List[Document]:
         """Enrich documents with additional metadata.
 
         Args:

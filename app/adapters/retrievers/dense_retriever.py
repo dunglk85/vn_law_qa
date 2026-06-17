@@ -20,5 +20,7 @@ class DenseRetrieverAdapter(RetrieverPort):
     def build_index(self, documents: List[Document]) -> None:
         pass
 
-    def get_retriever(self) -> BaseRetriever:
+    def get_retriever(self, search_kwargs: Optional[dict] = None) -> BaseRetriever:
+        if search_kwargs:
+            self._vector_store_retriever.search_kwargs.update(search_kwargs)
         return self._vector_store_retriever

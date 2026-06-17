@@ -19,43 +19,38 @@ class _HybridInterleavingRetriever(BaseRetriever):
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
     ) -> List[Document]:
-        self._sparse_retriever.k = self._k
+        self._sparse_retriever.k = self._k * 2
         dense_docs = self._dense_retriever.invoke(query)
         sparse_docs = self._sparse_retriever.invoke(query)
 
         interleaved: List[Document] = []
-        seen_ids = set()
+        seen_hashes: set[int] = set()
+
+        def _try_add(doc: Document) -> bool:
+            h = hash(doc.page_content)
+            if h not in seen_hashes:
+                interleaved.append(doc)
+                seen_hashes.add(h)
+                return True
+            return False
 
         for d, s in zip(dense_docs, sparse_docs):
-            d_id = id(d)
-            if d_id not in seen_ids:
-                interleaved.append(d)
-                seen_ids.add(d_id)
+            _try_add(d)
+            if len(interleaved) >= self._k:
+                break
+            _try_add(s)
             if len(interleaved) >= self._k:
                 break
 
-            s_id = id(s)
-            if s_id not in seen_ids:
-                interleaved.append(s)
-                seen_ids.add(s_id)
+        for d in dense_docs:
             if len(interleaved) >= self._k:
                 break
+            _try_add(d)
 
-        for d in dense_docs[len(interleaved):]:
+        for s in sparse_docs:
             if len(interleaved) >= self._k:
                 break
-            d_id = id(d)
-            if d_id not in seen_ids:
-                interleaved.append(d)
-                seen_ids.add(d_id)
-
-        for s in sparse_docs[len(interleaved):]:
-            if len(interleaved) >= self._k:
-                break
-            s_id = id(s)
-            if s_id not in seen_ids:
-                interleaved.append(s)
-                seen_ids.add(s_id)
+            _try_add(s)
 
         return interleaved[:self._k]
 
@@ -80,7 +75,7 @@ class HybridInterleavingRetrieverAdapter(RetrieverPort):
     def build_index(self, documents: List[Document]) -> None:
         self._bm25 = BM25Retriever.from_documents(documents)
 
-    def get_retriever(self) -> BaseRetriever:
+    def get_retriever(self, search_kwargs: Optional[dict] = None) -> BaseRetriever:
         if self._bm25 is None:
             raise RuntimeError("HybridInterleavingRetrieverAdapter: index not built. Call build_index() first.")
         wrapper = _HybridInterleavingRetriever()

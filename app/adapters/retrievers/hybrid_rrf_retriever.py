@@ -28,18 +28,18 @@ class _HybridRRFRetriever(BaseRetriever):
         doc_map: dict[int, Document] = {}
 
         for rank, doc in enumerate(dense_docs):
-            doc_id = id(doc)
-            doc_map[doc_id] = doc
-            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (self._rrf_k + rank + 1)
+            content_hash = hash(doc.page_content)
+            doc_map[content_hash] = doc
+            scores[content_hash] = scores.get(content_hash, 0.0) + 1.0 / (self._rrf_k + rank + 1)
 
         for rank, doc in enumerate(sparse_docs):
-            doc_id = id(doc)
-            if doc_id not in doc_map:
-                doc_map[doc_id] = doc
-            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (self._rrf_k + rank + 1)
+            content_hash = hash(doc.page_content)
+            if content_hash not in doc_map:
+                doc_map[content_hash] = doc
+            scores[content_hash] = scores.get(content_hash, 0.0) + 1.0 / (self._rrf_k + rank + 1)
 
-        sorted_ids = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
-        return [doc_map[doc_id] for doc_id in sorted_ids[:self._k]]
+        sorted_hashes = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
+        return [doc_map[h] for h in sorted_hashes[:self._k]]
 
     async def _aget_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
@@ -64,7 +64,7 @@ class HybridRRFRetrieverAdapter(RetrieverPort):
     def build_index(self, documents: List[Document]) -> None:
         self._bm25 = BM25Retriever.from_documents(documents)
 
-    def get_retriever(self) -> BaseRetriever:
+    def get_retriever(self, search_kwargs: Optional[dict] = None) -> BaseRetriever:
         if self._bm25 is None:
             raise RuntimeError("HybridRRFRetrieverAdapter: index not built. Call build_index() first.")
         wrapper = _HybridRRFRetriever()

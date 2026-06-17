@@ -15,7 +15,7 @@ class RetrieverPort(ABC):
     """
 
     @abstractmethod
-    def get_retriever(self) -> BaseRetriever:
+    def get_retriever(self, search_kwargs: Optional[dict] = None) -> BaseRetriever:
         """Return a LangChain-compatible BaseRetriever instance."""
         ...
 

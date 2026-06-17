@@ -22,10 +22,6 @@ from app.ports.retriever import RetrieverPort
 from app.ports.query_transformer import QueryTransformerPort
 
 
-# --------------------------------------------------------------------------- #
-# Prompt (business concern — belongs in core, not in adapters)                #
-# --------------------------------------------------------------------------- #
-
 _SYSTEM = """You are a grounded company knowledge assistant.
 Always base answers strictly on the provided context.
 If the answer isn't present, reply with "I don't know."
@@ -42,10 +38,8 @@ _PROMPT = ChatPromptTemplate.from_messages([
     ),
 ])
 
+_NO_CONTEXT_ANSWER = "I don't know. No relevant context was found to answer your question."
 
-# --------------------------------------------------------------------------- #
-# RAGService                                                                   #
-# --------------------------------------------------------------------------- #
 
 class RAGService:
     """Orchestrates retrieval-augmented generation.
@@ -67,9 +61,22 @@ class RAGService:
         self._reranker = reranker
         self._retriever = retriever
         self._query_transformer = query_transformer
+        self._warmed_up = False
 
-    def _build_retriever(self, category: Optional[str]):
-        base_retriever = self._retriever.get_retriever()
+    async def _ensure_warmup(self) -> None:
+        if not self._warmed_up:
+            try:
+                await self._vector_store.similarity_search("warmup", k=1)
+            except Exception:
+                pass
+            self._warmed_up = True
+
+    def _build_retriever(self, category: Optional[str]) -> BaseRetriever:
+        search_kwargs: dict = {"k": config.retrieval_k}
+        if category:
+            search_kwargs["filter"] = {"category": category}
+
+        base_retriever = self._retriever.get_retriever(search_kwargs=search_kwargs)
 
         compressor = self._reranker.get_compressor()
         if compressor is not None:
@@ -86,7 +93,7 @@ class RAGService:
     ) -> List[Document]:
         """Retrieve documents for multiple queries and deduplicate."""
         all_docs: List[Document] = []
-        seen_content: set = set()
+        seen_content: set[int] = set()
 
         for query in queries:
             docs = await retriever.ainvoke(query)
@@ -114,16 +121,21 @@ class RAGService:
             sources   — sorted list of unique source file paths
             contexts  — list of retrieved chunk texts (for evaluation)
         """
-        await self._vector_store.similarity_search("warmup", k=1)
+        await self._ensure_warmup()
 
         transformed_queries = await self._query_transformer.transform(question)
+        if not transformed_queries:
+            transformed_queries = [question]
 
         retriever = self._build_retriever(category)
 
         if len(transformed_queries) > 1:
             docs = await self._retrieve_with_transformed_queries(retriever, transformed_queries)
-            chat_model = self._llm.get_chat_model()
 
+            if not docs:
+                return _NO_CONTEXT_ANSWER, [], []
+
+            chat_model = self._llm.get_chat_model()
             doc_chain = create_stuff_documents_chain(chat_model, _PROMPT)
             result = await doc_chain.ainvoke({"input": question, "context": docs})
 

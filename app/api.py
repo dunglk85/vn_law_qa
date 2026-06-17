@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.factory import create_cache, create_chunker, create_embeddings, create_llm, create_metadata_enricher, create_query_transformer, create_reranker, create_retriever, create_vector_store
 from app.core.ingest_service import run_ingest
@@ -86,7 +86,7 @@ async def _ingest_job() -> None:
 # --------------------------------------------------------------------------- #
 
 class AskRequest(BaseModel):
-    question: str
+    question: str = Field(min_length=1, max_length=2000)
     category: str | None = None
 
 

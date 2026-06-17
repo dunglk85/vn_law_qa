@@ -37,7 +37,7 @@ from app.ports.metadata_enrichment import MetadataEnrichmentPort
 # File loading                                                                 #
 # --------------------------------------------------------------------------- #
 
-def _load_docs(
+async def _load_docs(
     base: str = config.data_dir,
     enricher: MetadataEnrichmentPort | None = None,
 ) -> List[Document]:
@@ -84,7 +84,7 @@ def _load_docs(
             traceback.print_exc()
 
     if enricher is not None:
-        docs = enricher.enrich(docs)
+        docs = await enricher.enrich(docs)
 
     return docs
 
@@ -110,7 +110,11 @@ async def run_ingest(
     Returns:
         dict with 'documents' and 'chunks' counts.
     """
-    docs = _load_docs(enricher=enricher)
+    docs = await _load_docs(enricher=enricher)
+
+    if not docs:
+        print("INGEST ERROR: no documents loaded.")
+        return {"documents": 0, "chunks": 0}
 
     try:
         chunks = chunker.chunk(docs)
@@ -118,6 +122,10 @@ async def run_ingest(
         print("INGEST ERROR: chunking failed")
         traceback.print_exc()
         raise
+
+    if not chunks:
+        print("INGEST ERROR: chunking produced no chunks.")
+        return {"documents": len(docs), "chunks": 0}
 
     await vector_store.add_documents(chunks)
     print(f"INGEST: {len(docs)} docs → {len(chunks)} chunks stored.")

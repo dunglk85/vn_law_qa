@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 from typing import List
 
 from langchain_core.documents import Document
@@ -36,24 +37,21 @@ class LLMEnricherAdapter(MetadataEnrichmentPort):
             return content[:self._max_content_length] + "..."
         return content
 
-    def enrich(self, documents: List[Document]) -> List[Document]:
-        import asyncio
-
+    async def enrich(self, documents: List[Document]) -> List[Document]:
         async def _enrich_doc(doc: Document) -> None:
             content = self._truncate(doc.page_content)
+            try:
+                summary_chain = _SUMMARY_PROMPT | self._llm
+                summary_result = await summary_chain.ainvoke({"content": content})
+                doc.metadata["summary"] = summary_result.content.strip()
 
-            summary_chain = _SUMMARY_PROMPT | self._llm
-            summary_result = await summary_chain.ainvoke({"content": content})
-            doc.metadata["summary"] = summary_result.content.strip()
+                keywords_chain = _KEYWORDS_PROMPT | self._llm
+                keywords_result = await keywords_chain.ainvoke({"content": content})
+                keywords_text = keywords_result.content.strip()
+                doc.metadata["keywords"] = [k.strip() for k in keywords_text.split(",") if k.strip()]
+            except Exception as exc:
+                print(f"ENRICH ERROR: failed to enrich document: {exc}")
 
-            keywords_chain = _KEYWORDS_PROMPT | self._llm
-            keywords_result = await keywords_chain.ainvoke({"content": content})
-            keywords_text = keywords_result.content.strip()
-            doc.metadata["keywords"] = [k.strip() for k in keywords_text.split(",") if k.strip()]
-
-        async def _enrich_all() -> None:
-            tasks = [_enrich_doc(doc) for doc in documents]
-            await asyncio.gather(*tasks)
-
-        asyncio.run(_enrich_all())
+        tasks = [_enrich_doc(doc) for doc in documents]
+        await asyncio.gather(*tasks, return_exceptions=True)
         return documents

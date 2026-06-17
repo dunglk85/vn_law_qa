@@ -59,7 +59,7 @@ def generate_testset(
 ) -> None:
     """Generate test Q&A pairs from source documents using RAGAS TestsetGenerator."""
     print(f"📄 Loading documents from {config.data_dir}...")
-    docs = _load_docs()
+    docs = asyncio.run(_load_docs())
     print(f"📄 Loaded {len(docs)} documents")
 
     if not docs:

@@ -13,7 +13,7 @@ class BasicEnricherAdapter(MetadataEnrichmentPort):
     Extracts metadata from file paths without external dependencies.
     """
 
-    def enrich(self, documents: List[Document]) -> List[Document]:
+    async def enrich(self, documents: List[Document]) -> List[Document]:
         for doc in documents:
             source = doc.metadata.get("source", "")
             if source:
