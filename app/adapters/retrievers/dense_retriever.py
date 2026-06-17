@@ -6,6 +6,8 @@ from langchain_core.retrievers import BaseRetriever
 from langchain_core.vectorstores import VectorStoreRetriever
 
 from app.ports.retriever import RetrieverPort
+from app.ports.vector_store import VectorStorePort
+from app.config import config
 
 
 class DenseRetrieverAdapter(RetrieverPort):
@@ -14,13 +16,12 @@ class DenseRetrieverAdapter(RetrieverPort):
     Wraps the vector store's retriever directly.
     """
 
-    def __init__(self, vector_store_retriever: VectorStoreRetriever) -> None:
-        self._vector_store_retriever = vector_store_retriever
+    def __init__(self, vector_store: VectorStorePort) -> None:
+        self._vector_store = vector_store
 
     def build_index(self, documents: List[Document]) -> None:
         pass
 
     def get_retriever(self, search_kwargs: Optional[dict] = None) -> BaseRetriever:
-        if search_kwargs:
-            self._vector_store_retriever.search_kwargs.update(search_kwargs)
-        return self._vector_store_retriever
+        kwargs = search_kwargs or {"k": config.retrieval_k}
+        return self._vector_store.as_retriever(search_kwargs=kwargs)

@@ -40,7 +40,10 @@ _query_transformer = create_query_transformer(llm=_llm)
 _enricher = create_metadata_enricher(llm=_llm)
 
 # Activate LLM cache (e.g. Redis semantic cache, or no-op)
-_cache.apply()
+try:
+    _cache.apply()
+except Exception as e:
+    print(f"CACHE: Failed to activate cache ({e}). Running without cache.")
 
 # RAGService: business logic with injected dependencies
 _rag_service = RAGService(

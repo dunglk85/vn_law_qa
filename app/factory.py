@@ -184,22 +184,19 @@ def create_chunker(embeddings: EmbeddingsPort | None = None) -> ChunkingPort:
 # --------------------------------------------------------------------------- #
 
 def create_retriever(vector_store: VectorStorePort) -> RetrieverPort:
-    search_kwargs: dict = {"k": config.retrieval_k}
-    vector_store_retriever = vector_store.as_retriever(search_kwargs=search_kwargs)
-
     match config.retriever_type:
         case "dense":
             from app.adapters.retrievers.dense_retriever import DenseRetrieverAdapter
-            return DenseRetrieverAdapter(vector_store_retriever)
+            return DenseRetrieverAdapter(vector_store)
         case "bm25":
             from app.adapters.retrievers.bm25_retriever import BM25RetrieverAdapter
             return BM25RetrieverAdapter(k=config.retrieval_k)
         case "hybrid_interleaving":
             from app.adapters.retrievers.hybrid_interleaving_retriever import HybridInterleavingRetrieverAdapter
-            return HybridInterleavingRetrieverAdapter(vector_store_retriever, k=config.retrieval_k)
+            return HybridInterleavingRetrieverAdapter(vector_store, k=config.retrieval_k)
         case "hybrid_rrf":
             from app.adapters.retrievers.hybrid_rrf_retriever import HybridRRFRetrieverAdapter
-            return HybridRRFRetrieverAdapter(vector_store_retriever, k=config.retrieval_k, rrf_k=config.rrf_k)
+            return HybridRRFRetrieverAdapter(vector_store, k=config.retrieval_k, rrf_k=config.rrf_k)
         # ── add new providers below ──────────────────────────────────────────
         case _:
             raise ValueError(
