@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 from pathlib import Path
@@ -9,8 +10,10 @@ from langchain_openai import ChatOpenAI
 from ragas import evaluate, SingleTurnSample, EvaluationDataset
 from ragas.metrics import faithfulness, answer_relevancy, context_precision, context_recall
 from ragas.run_config import RunConfig
+from ragas.testset import TestsetGenerator
 
 from app.config import config
+from app.core.ingest_service import _load_docs
 
 
 BASE_DIR = Path(__file__).parent.parent
@@ -18,6 +21,7 @@ TEST_DATA_PATH = BASE_DIR / "seed" / "qna_test.json"
 RESULTS_PATH = BASE_DIR / "eval_results.json"
 API_URL = "http://localhost:8000/ask"
 REQUEST_TIMEOUT = 30.0
+DEFAULT_TEST_SIZE = 20
 
 
 def load_jsonl(path: Path) -> List[Dict[str, Any]]:
@@ -47,6 +51,48 @@ def print_eval_res(eval_result) -> None:
     print("\n📈 Averages:")
     for k, v in means.items():
         print(f"- {k}: {v:.3f}")
+
+
+def generate_testset(
+    output_path: Path = TEST_DATA_PATH,
+    test_size: int = DEFAULT_TEST_SIZE,
+) -> None:
+    """Generate test Q&A pairs from source documents using RAGAS TestsetGenerator."""
+    print(f"📄 Loading documents from {config.data_dir}...")
+    docs = _load_docs()
+    print(f"📄 Loaded {len(docs)} documents")
+
+    if not docs:
+        print("❌ No documents found. Check DATA_DIR in .env")
+        return
+
+    generator_llm = ChatOpenAI(model=config.llm_model)
+    critic_llm = ChatOpenAI(model=config.llm_model)
+
+    generator = TestsetGenerator.with_openai(
+        generator_llm=generator_llm,
+        critic_llm=critic_llm,
+    )
+
+    print(f"🧪 Generating {test_size} test samples...")
+    testset = generator.generate_with_langchain_docs(
+        documents=docs,
+        test_size=test_size,
+    )
+
+    df = testset.to_pandas()
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        for _, row in df.iterrows():
+            entry = {
+                "question": row.get("question", ""),
+                "answer": row.get("ground_truth", ""),
+            }
+            if entry["question"] and entry["answer"]:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    print(f"💾 Generated {len(df)} test samples → {output_path}")
 
 
 async def evaluate_rag_system(test_path: Path = TEST_DATA_PATH) -> None:
@@ -94,4 +140,27 @@ async def evaluate_rag_system(test_path: Path = TEST_DATA_PATH) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(evaluate_rag_system())
+    parser = argparse.ArgumentParser(description="RAGAS evaluation harness")
+    parser.add_argument(
+        "mode",
+        choices=["generate", "evaluate"],
+        help="generate: create test dataset from documents; evaluate: run evaluation against live server",
+    )
+    parser.add_argument(
+        "--test-size",
+        type=int,
+        default=DEFAULT_TEST_SIZE,
+        help=f"Number of test samples to generate (default: {DEFAULT_TEST_SIZE})",
+    )
+    parser.add_argument(
+        "--test-path",
+        type=Path,
+        default=TEST_DATA_PATH,
+        help=f"Path to test data JSONL file (default: {TEST_DATA_PATH})",
+    )
+    args = parser.parse_args()
+
+    if args.mode == "generate":
+        generate_testset(output_path=args.test_path, test_size=args.test_size)
+    else:
+        asyncio.run(evaluate_rag_system(test_path=args.test_path))
