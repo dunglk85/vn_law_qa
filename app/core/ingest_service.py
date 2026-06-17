@@ -1,8 +1,9 @@
 """app/core/ingest_service.py
 
-Ingestion business logic — loads, chunks, and stores documents.
+Ingestion business logic — loads, enriches, chunks, and stores documents.
 This module knows NOTHING about PGVector, OpenAI, or any concrete provider.
-It depends only on VectorStorePort, ChunkingPort, and RetrieverPort (the abstract interfaces).
+It depends only on VectorStorePort, ChunkingPort, RetrieverPort, and
+MetadataEnrichmentPort (the abstract interfaces).
 """
 from __future__ import annotations
 import glob
@@ -29,14 +30,26 @@ from app.config import config
 from app.ports.vector_store import VectorStorePort
 from app.ports.chunking import ChunkingPort
 from app.ports.retriever import RetrieverPort
+from app.ports.metadata_enrichment import MetadataEnrichmentPort
 
 
 # --------------------------------------------------------------------------- #
 # File loading                                                                 #
 # --------------------------------------------------------------------------- #
 
-def _load_docs(base: str = config.data_dir) -> List[Document]:
-    """Recursively load all supported files under *base* into Documents."""
+def _load_docs(
+    base: str = config.data_dir,
+    enricher: MetadataEnrichmentPort | None = None,
+) -> List[Document]:
+    """Recursively load all supported files under *base* into Documents.
+
+    Args:
+        base: Root directory to scan for documents.
+        enricher: Optional metadata enrichment strategy to apply after loading.
+
+    Returns:
+        List of documents with metadata (category, source, and any enrichment).
+    """
     docs: List[Document] = []
 
     for path in glob.glob(os.path.join(base, "**", "*"), recursive=True):
@@ -63,11 +76,15 @@ def _load_docs(base: str = config.data_dir) -> List[Document]:
 
             for d in loaded:
                 d.metadata["category"] = category
+                d.metadata["source"] = path
                 docs.append(d)
 
         except Exception:
             print(f"INGEST ERROR: failed to load {path}")
             traceback.print_exc()
+
+    if enricher is not None:
+        docs = enricher.enrich(docs)
 
     return docs
 
@@ -80,6 +97,7 @@ async def run_ingest(
     vector_store: VectorStorePort,
     chunker: ChunkingPort,
     retriever: RetrieverPort,
+    enricher: MetadataEnrichmentPort | None = None,
 ) -> dict:
     """Full ingestion pipeline.
 
@@ -87,11 +105,12 @@ async def run_ingest(
         vector_store: Any VectorStorePort implementation injected by the caller.
         chunker: Any ChunkingPort implementation injected by the caller.
         retriever: Any RetrieverPort implementation injected by the caller.
+        enricher: Optional MetadataEnrichmentPort for metadata enrichment.
 
     Returns:
         dict with 'documents' and 'chunks' counts.
     """
-    docs = _load_docs()
+    docs = _load_docs(enricher=enricher)
 
     try:
         chunks = chunker.chunk(docs)

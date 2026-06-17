@@ -20,6 +20,7 @@ from app.ports.cache import CachePort
 from app.ports.chunking import ChunkingPort
 from app.ports.retriever import RetrieverPort
 from app.ports.query_transformer import QueryTransformerPort
+from app.ports.metadata_enrichment import MetadataEnrichmentPort
 
 
 # --------------------------------------------------------------------------- #
@@ -230,4 +231,27 @@ def create_query_transformer(llm: LLMPort) -> QueryTransformerPort:
             raise ValueError(
                 f"Unknown QUERY_TRANSFORMER_TYPE='{config.query_transformer_type}'. "
                 "Supported: none, hyde, decomposition, hyde_decomposition"
+            )
+
+
+# --------------------------------------------------------------------------- #
+# Metadata Enrichment                                                          #
+# --------------------------------------------------------------------------- #
+
+def create_metadata_enricher(llm: LLMPort) -> MetadataEnrichmentPort:
+    match config.metadata_enricher_type:
+        case "none":
+            from app.adapters.metadata_enrichers.none_enricher import NoneEnricherAdapter
+            return NoneEnricherAdapter()
+        case "basic":
+            from app.adapters.metadata_enrichers.basic_enricher import BasicEnricherAdapter
+            return BasicEnricherAdapter()
+        case "llm":
+            from app.adapters.metadata_enrichers.llm_enricher import LLMEnricherAdapter
+            return LLMEnricherAdapter(llm.get_chat_model())
+        # ── add new providers below ──────────────────────────────────────────
+        case _:
+            raise ValueError(
+                f"Unknown METADATA_ENRICHER_TYPE='{config.metadata_enricher_type}'. "
+                "Supported: none, basic, llm"
             )

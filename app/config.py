@@ -36,6 +36,9 @@ class AppConfig:
     query_transformer_type: str = os.getenv("QUERY_TRANSFORMER_TYPE", "none")
     # none | hyde | decomposition | hyde_decomposition
 
+    metadata_enricher_type: str = os.getenv("METADATA_ENRICHER_TYPE", "basic")
+    # basic | llm | none
+
     # ------------------------------------------------------------------
     # Connection strings
     # ------------------------------------------------------------------

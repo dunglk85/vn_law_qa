@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app.factory import create_cache, create_chunker, create_embeddings, create_llm, create_query_transformer, create_reranker, create_retriever, create_vector_store
+from app.factory import create_cache, create_chunker, create_embeddings, create_llm, create_metadata_enricher, create_query_transformer, create_reranker, create_retriever, create_vector_store
 from app.core.ingest_service import run_ingest
 from app.core.rag_service import RAGService
 
@@ -37,6 +37,7 @@ _cache = create_cache(embeddings=_embeddings)
 _chunker = create_chunker(embeddings=_embeddings)
 _retriever = create_retriever(vector_store=_vector_store)
 _query_transformer = create_query_transformer(llm=_llm)
+_enricher = create_metadata_enricher(llm=_llm)
 
 # Activate LLM cache (e.g. Redis semantic cache, or no-op)
 _cache.apply()
@@ -74,7 +75,7 @@ async def _ingest_job() -> None:
         "error": None,
     })
     try:
-        stats = await run_ingest(_vector_store, _chunker, _retriever)
+        stats = await run_ingest(_vector_store, _chunker, _retriever, _enricher)
         _ingest_last.update({"status": "succeeded", "finished_at": time.time(), "stats": stats})
     except Exception as e:
         _ingest_last.update({"status": "failed", "finished_at": time.time(), "error": str(e)})
