@@ -15,7 +15,7 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
-from shared import Article, Citation, Task, parse_json
+from shared import Article, Citation, Task, llm_ainvoke, parse_json
 from shared import MAX_RETRIES, QUALITY_THRESHOLD
 
 from .legal_research_agent import LegalResearchAgent
@@ -49,6 +49,8 @@ class SupervisorAgent:
         synthesis_agent: ResponseSynthesizerAgent,
         llm: Optional[BaseChatModel] = None,
     ):
+        if llm is None:
+            raise ValueError("SupervisorAgent requires a chat model")
         self.research_agent  = research_agent
         self.citation_agent  = citation_agent
         self.synthesis_agent = synthesis_agent
@@ -96,7 +98,7 @@ class SupervisorAgent:
             '"complexity":"simple|moderate|complex","key_terms":[]}'
         )
         try:
-            r        = await self.llm.ainvoke(prompt)
+            r        = await llm_ainvoke(self.llm, prompt)
             analysis = parse_json(r.content, "analyze_query")
         except Exception as exc:
             logger.error("analyze_query failed: %s", exc)
@@ -138,13 +140,16 @@ class SupervisorAgent:
                     "retry_count": state.get("retry_count", 0) + 1}
 
     async def execute_response_synthesis(self, state: SupervisorState) -> dict:
+        new_retry = state.get("retry_count", 0) + 1
         try:
             result = await self.synthesis_agent.synthesize(
                 state["query"], state.get("verified_citations", []))
-            return {"final_response": result["response"], "error": None}
+            return {"final_response": result["response"], "error": None,
+                    "retry_count": new_retry}
         except Exception as exc:
             logger.error("ResponseSynthesizerAgent failed: %s", exc)
-            return {"error": str(exc), "final_response": None}
+            return {"error": str(exc), "final_response": None,
+                    "retry_count": new_retry}
 
     async def validate_quality(self, state: SupervisorState) -> dict:
         response  = state.get("final_response") or ""
@@ -175,7 +180,7 @@ class SupervisorAgent:
     def route_after_validation(self, state: SupervisorState) -> str:
         if state.get("error"):                               return "error"
         if (state.get("quality_score") or 0) >= QUALITY_THRESHOLD: return "complete"
-        if state.get("retry_count", 0) >= MAX_RETRIES:     return "complete"
+        if state.get("retry_count", 0) >= MAX_RETRIES:     return "error"
         return "retry_synthesis"
 
     # ── public API ─────────────────────────────────────────────────────────

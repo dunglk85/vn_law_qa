@@ -70,7 +70,7 @@ async def _load_docs(
                 case ".docx":
                     loaded = Docx2txtLoader(path).load()
                 case ".txt":
-                    loaded = TextLoader(path).load()
+                    loaded = TextLoader(path, encoding="utf-8").load()
                 case _:
                     continue  # unsupported extension — skip silently
 

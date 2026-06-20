@@ -1,7 +1,17 @@
 from __future__ import annotations
+import asyncio
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+_LLM_TIMEOUT = 30.0
+
+
+async def llm_ainvoke(llm, prompt: str, timeout: float = _LLM_TIMEOUT):
+    return await asyncio.wait_for(llm.ainvoke(prompt), timeout=timeout)
 
 
 @dataclass(frozen=True)
@@ -40,6 +50,7 @@ def parse_json(content: str, context: str) -> dict[str, Any]:
     try:
         return json.loads(content)
     except json.JSONDecodeError:
+        logger.warning("parse_json failed for %s: non-JSON response (%.100r)", context, content)
         return {}
 
 
@@ -49,7 +60,7 @@ def parse_list(content: str, context: str) -> list[str]:
         if isinstance(parsed, list):
             return [str(item) for item in parsed]
     except json.JSONDecodeError:
-        pass
+        logger.warning("parse_list failed for %s: non-JSON response (%.100r)", context, content)
     return []
 
 

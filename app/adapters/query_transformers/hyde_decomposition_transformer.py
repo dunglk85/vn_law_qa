@@ -1,11 +1,14 @@
 from __future__ import annotations
 import asyncio
+import logging
 from typing import List
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.ports.query_transformer import QueryTransformerPort
+
+logger = logging.getLogger(__name__)
 
 
 _HYDE_PROMPT = ChatPromptTemplate.from_messages([
@@ -38,10 +41,14 @@ class HyDEDecompositionQueryTransformerAdapter(QueryTransformerPort):
         hyde_chain = _HYDE_PROMPT | self._llm
         decomposition_chain = _DECOMPOSITION_PROMPT | self._llm
 
-        hyde_result, decomposition_result = await asyncio.gather(
-            hyde_chain.ainvoke({"question": query}),
-            decomposition_chain.ainvoke({"question": query}),
-        )
+        try:
+            hyde_result, decomposition_result = await asyncio.gather(
+                hyde_chain.ainvoke({"question": query}),
+                decomposition_chain.ainvoke({"question": query}),
+            )
+        except Exception as exc:
+            logger.error("HyDE+Decomposition failed: %s", exc)
+            return [query]
 
         hypothetical_answer = hyde_result.content.strip()
         decomposition_text = decomposition_result.content.strip()

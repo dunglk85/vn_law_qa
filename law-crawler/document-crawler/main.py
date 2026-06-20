@@ -61,7 +61,7 @@ for i in range(len(df_vb)):
         noidung = div_text.find_all('div')[1]
         list_id.append(id)
         list_noidung.append(str(noidung))
-    except:
+    except Exception:
         continue
 
     if i % 10 == 0:

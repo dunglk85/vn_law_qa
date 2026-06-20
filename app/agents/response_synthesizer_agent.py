@@ -4,7 +4,7 @@ from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
 
-from shared import Citation, format_citations
+from shared import Citation, format_citations, llm_ainvoke
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +30,20 @@ class ResponseSynthesizerAgent:
             "Yêu cầu: trả lời tiếng Việt, trích dẫn điều luật, "
             "thêm khuyến nghị nếu cần, lưu ý tham khảo luật sư.\n\nTrả lời:"
         )
-        response = await self.llm.ainvoke(prompt)
-        return {
-            "response": response.content,
-            "citations": [c.model_dump() for c in citations],
-            "metadata": {
-                "citation_count": len(citations),
-                "response_length": len(response.content),
-            },
-        }
+        try:
+            response = await llm_ainvoke(self.llm, prompt)
+            return {
+                "response": response.content,
+                "citations": [c.model_dump() for c in citations],
+                "metadata": {
+                    "citation_count": len(citations),
+                    "response_length": len(response.content),
+                },
+            }
+        except Exception as exc:
+            logger.error("Synthesis LLM call failed: %s", exc)
+            return {
+                "response": "Không thể tạo câu trả lời do lỗi hệ thống. Vui lòng thử lại.",
+                "citations": [],
+                "metadata": {"citation_count": 0, "response_length": 0, "error": str(exc)},
+            }

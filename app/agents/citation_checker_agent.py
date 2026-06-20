@@ -16,7 +16,7 @@ from langgraph.graph import END, START, StateGraph
 
 from app.ports.vector_store import VectorStorePort
 from shared import (
-    Article, Citation, format_citations, parse_json,
+    Article, Citation, format_citations, llm_ainvoke, parse_json,
     RELEVANCE_THRESHOLD,
 )
 
@@ -119,7 +119,7 @@ class CitationCheckerAgent:
             '[{"keep": "<id>", "remove": "<id>", "reason": "..."}]}'
         )
         try:
-            r    = await self.llm.ainvoke(prompt)
+            r    = await llm_ainvoke(self.llm, prompt)
             data = parse_json(r.content, "cross_reference")
         except Exception as exc:
             logger.error("Gate 3 LLM failed: %s", exc)

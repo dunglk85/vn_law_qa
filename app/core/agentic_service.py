@@ -88,3 +88,12 @@ class AgenticService:
         contexts = [c.content for c in citations]
 
         return answer, sources, contexts
+
+
+def create_agentic_service(
+    vector_store: VectorStorePort,
+    llm: LLMPort,
+    retriever: RetrieverPort,
+    query_transformer: QueryTransformerPort,
+) -> AgenticService:
+    return AgenticService(vector_store, llm, retriever, query_transformer)

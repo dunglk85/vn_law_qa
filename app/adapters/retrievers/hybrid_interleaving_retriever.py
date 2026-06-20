@@ -4,7 +4,6 @@ from typing import List, Optional
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
-from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_community.retrievers import BM25Retriever
 
 from app.ports.retriever import RetrieverPort
@@ -14,7 +13,7 @@ from app.config import config
 
 class _HybridInterleavingRetriever(BaseRetriever):
     """Combines dense and sparse retrieval by interleaving results."""
-    _dense_retriever: VectorStoreRetriever
+    _dense_retriever: BaseRetriever
     _sparse_retriever: BM25Retriever
     _k: int
 

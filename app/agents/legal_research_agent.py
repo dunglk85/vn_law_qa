@@ -16,7 +16,7 @@ from langgraph.graph import END, START, StateGraph
 
 from app.ports.retriever import RetrieverPort
 from shared import (
-    Article, parse_json, parse_list,
+    Article, llm_ainvoke, parse_json, parse_list,
     N_RESULTS_PER_VECTOR, TOP_K_RESEARCH, TOP_K_LLM_SCORE,
     HYDE_ENABLED, SUBQUERY_COUNT,
 )
@@ -78,7 +78,7 @@ class LegalResearchAgent:
             f"Câu hỏi: {query}\n\nĐiều luật giả định:"
         )
         try:
-            r = await self.llm.ainvoke(prompt)
+            r = await llm_ainvoke(self.llm, prompt)
             return r.content.strip()
         except Exception as exc:
             logger.warning("HyDE failed: %s", exc)
@@ -92,7 +92,7 @@ class LegalResearchAgent:
             'JSON (mảng chuỗi): ["câu 1", "câu 2", ...]'
         )
         try:
-            r = await self.llm.ainvoke(prompt)
+            r = await llm_ainvoke(self.llm, prompt)
             qs = parse_list(r.content, "decompose_query")
             return [q.strip() for q in qs if q.strip()] or [query]
         except Exception as exc:
@@ -174,7 +174,7 @@ class LegalResearchAgent:
             'JSON: {"score": <0-10>, "reason": "..."}'
         )
         try:
-            r    = await self.llm.ainvoke(prompt)
+            r    = await llm_ainvoke(self.llm, prompt)
             data = parse_json(r.content, "_llm_score")
             return article, max(0.0, min(10.0, float(data.get("score", 5))))
         except Exception as exc:

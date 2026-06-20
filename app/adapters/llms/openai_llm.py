@@ -11,6 +11,9 @@ class OpenAILLMAdapter(LLMPort):
 
     def __init__(self, model: str = "gpt-4o-mini") -> None:
         self._model = model
+        self._instance: BaseChatModel | None = None
 
     def get_chat_model(self) -> BaseChatModel:
-        return ChatOpenAI(model=self._model, openai_api_key=config.openai_api_key)
+        if self._instance is None:
+            self._instance = ChatOpenAI(model=self._model, openai_api_key=config.openai_api_key)
+        return self._instance

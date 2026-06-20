@@ -24,7 +24,10 @@ class CrossEncoderRerankerAdapter(RerankerPort):
     ) -> None:
         self._model = model
         self._top_n = top_n
+        self._compressor: BaseDocumentCompressor | None = None
 
     def get_compressor(self) -> Optional[BaseDocumentCompressor]:
-        cross_encoder = HuggingFaceCrossEncoder(model_name=self._model)
-        return CrossEncoderReranker(model=cross_encoder, top_n=self._top_n)
+        if self._compressor is None:
+            cross_encoder = HuggingFaceCrossEncoder(model_name=self._model)
+            self._compressor = CrossEncoderReranker(model=cross_encoder, top_n=self._top_n)
+        return self._compressor

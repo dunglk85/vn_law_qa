@@ -3,8 +3,6 @@ from typing import List, Optional
 
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
-from langchain_core.vectorstores import VectorStoreRetriever
-
 from app.ports.retriever import RetrieverPort
 from app.ports.vector_store import VectorStorePort
 from app.config import config

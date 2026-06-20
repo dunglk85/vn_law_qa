@@ -9,6 +9,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.ports.metadata_enrichment import MetadataEnrichmentPort
 
 
+_ENRICH_TIMEOUT = 30.0
+
 _SUMMARY_PROMPT = ChatPromptTemplate.from_messages([
     ("system", "You are a helpful assistant. Generate a concise one-sentence summary of the document content."),
     ("user", "Document content:\n{content}\n\nSummary:"),
@@ -42,11 +44,13 @@ class LLMEnricherAdapter(MetadataEnrichmentPort):
             content = self._truncate(doc.page_content)
             try:
                 summary_chain = _SUMMARY_PROMPT | self._llm
-                summary_result = await summary_chain.ainvoke({"content": content})
+                summary_result = await asyncio.wait_for(
+                    summary_chain.ainvoke({"content": content}), timeout=_ENRICH_TIMEOUT)
                 doc.metadata["summary"] = summary_result.content.strip()
 
                 keywords_chain = _KEYWORDS_PROMPT | self._llm
-                keywords_result = await keywords_chain.ainvoke({"content": content})
+                keywords_result = await asyncio.wait_for(
+                    keywords_chain.ainvoke({"content": content}), timeout=_ENRICH_TIMEOUT)
                 keywords_text = keywords_result.content.strip()
                 doc.metadata["keywords"] = [k.strip() for k in keywords_text.split(",") if k.strip()]
             except Exception as exc:

@@ -11,10 +11,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.config import config
+from app.core.agentic_service import create_agentic_service
 from app.factory import (
     create_cache, create_chunker, create_embeddings, create_llm,
     create_metadata_enricher, create_query_transformer, create_reranker,
-    create_retriever, create_vector_store, create_agentic_service,
+    create_retriever, create_vector_store,
 )
 from app.core.ingest_service import run_ingest
 from app.core.rag_service import RAGService
