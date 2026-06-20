@@ -9,21 +9,27 @@ LangGraph persists it. Routers are pure functions — never mutate state.
 """
 import logging
 import time
-from typing import Annotated, Optional, TypedDict, Any
+from typing import Annotated, Any, TypedDict
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
-from shared import Article, Citation, Task, llm_ainvoke, parse_json
-from shared import MAX_RETRIES, QUALITY_THRESHOLD
+from app.config import config
+from app.core.retry import retry_with_backoff
+from shared import MAX_RETRIES, QUALITY_THRESHOLD, Article, Citation, Task, llm_ainvoke, parse_json
 
-from .legal_research_agent import LegalResearchAgent
 from .citation_checker_agent import CitationCheckerAgent
+from .legal_research_agent import LegalResearchAgent
 from .response_synthesizer_agent import ResponseSynthesizerAgent
 
 logger = logging.getLogger(__name__)
+
+_FALLBACK_RESPONSE = (
+    "I was unable to process your request due to an internal error. "
+    "Please try again later."
+)
 
 
 class SupervisorState(TypedDict):
@@ -31,13 +37,13 @@ class SupervisorState(TypedDict):
     query:              str
     user_id:            str
     session_id:         str
-    legal_domain:       Optional[str]
+    legal_domain:       str | None
     task_plan:          list[Task]
     research_results:   list[Article]
     verified_citations: list[Citation]
-    final_response:     Optional[str]
-    quality_score:      Optional[float]
-    error:              Optional[str]
+    final_response:     str | None
+    quality_score:      float | None
+    error:              str | None
     retry_count:        int
     metadata:           dict[str, Any]
     reasoning_steps:    list[dict]
@@ -49,7 +55,7 @@ class SupervisorAgent:
         research_agent:  LegalResearchAgent,
         citation_agent:  CitationCheckerAgent,
         synthesis_agent: ResponseSynthesizerAgent,
-        llm: Optional[BaseChatModel] = None,
+        llm: BaseChatModel | None = None,
         knowledge_search_tool=None,
     ):
         if llm is None:
@@ -72,6 +78,12 @@ class SupervisorAgent:
             "error": kwargs.get("error", ""),
             "timestamp": time.time(),
         }
+
+    def _validate_subagent_response(self, response: dict, required_keys: list[str]) -> bool:
+        for key in required_keys:
+            if key not in response or response[key] is None:
+                return False
+        return True
 
     # ── graph ──────────────────────────────────────────────────────────────
 
@@ -114,7 +126,12 @@ class SupervisorAgent:
             '"complexity":"simple|moderate|complex","key_terms":[]}'
         )
         try:
-            r        = await llm_ainvoke(self.llm, prompt)
+            r = await retry_with_backoff(
+                lambda: llm_ainvoke(self.llm, prompt),
+                max_attempts=config.tool_retry_max_attempts,
+                base_delay=config.tool_retry_base_delay,
+                desc="analyze_query",
+            )
             analysis = parse_json(r.content, "analyze_query")
             step = self._step("supervisor", "analyze_query",
                 input=state["query"][:200],
@@ -153,48 +170,15 @@ class SupervisorAgent:
 
     async def execute_legal_research(self, state: SupervisorState) -> dict:
         steps = list(state.get("reasoning_steps", []))
+        articles: list[Article] = []
         try:
-            articles = await self.research_agent.run(state["query"])
-            logger.info("research: %d articles (retry=%d)",
-                        len(articles), state.get("retry_count", 0))
-
-            tool_calls: list[dict] = []
-            tool_results = []
-            if self.knowledge_search_tool is not None:
-                try:
-                    tool_results = await self.knowledge_search_tool.ainvoke({"query": state["query"]})
-                    logger.info("knowledge_search_tool: %d results", len(tool_results))
-                    tool_calls.append({
-                        "tool": "knowledge_search",
-                        "input": state["query"][:200],
-                        "result_count": len(tool_results),
-                    })
-                except Exception as exc:
-                    logger.warning("knowledge_search_tool failed: %s", exc)
-                    tool_calls.append({
-                        "tool": "knowledge_search",
-                        "input": state["query"][:200],
-                        "error": str(exc),
-                    })
-
-            step = self._step("supervisor", "legal_research",
-                input=state["query"][:200],
-                output=f"articles={len(articles)}, tool_results={len(tool_results)}",
-                tool_calls=tool_calls,
+            articles = await retry_with_backoff(
+                lambda: self.research_agent.run(state["query"]),
+                max_attempts=config.tool_retry_max_attempts,
+                base_delay=config.tool_retry_base_delay,
+                desc="legal_research",
             )
-            steps.append(step)
-
-            return {
-                "research_results": articles,
-                "error": None,
-                "metadata": {
-                    **state.get("metadata", {}),
-                    "research_complete": True,
-                    "tool_invoked": self.knowledge_search_tool is not None,
-                    "tool_result_count": len(tool_results),
-                },
-                "reasoning_steps": steps,
-            }
+            logger.info("research: %d articles", len(articles))
         except Exception as exc:
             logger.error("LegalResearchAgent failed: %s", exc)
             step = self._step("supervisor", "legal_research",
@@ -205,11 +189,58 @@ class SupervisorAgent:
             steps.append(step)
             return {"error": str(exc), "research_results": [], "reasoning_steps": steps}
 
+        tool_calls: list[dict] = []
+        if self.knowledge_search_tool is not None:
+            try:
+                tool_results = await retry_with_backoff(
+                    lambda: self.knowledge_search_tool.ainvoke({"query": state["query"]}),
+                    max_attempts=config.tool_retry_max_attempts,
+                    base_delay=config.tool_retry_base_delay,
+                    desc="knowledge_search_tool",
+                )
+                logger.info("knowledge_search_tool: %d results", len(tool_results))
+                tool_calls.append({
+                    "tool": "knowledge_search",
+                    "input": state["query"][:200],
+                    "result_count": len(tool_results),
+                })
+            except Exception as exc:
+                logger.warning("knowledge_search_tool failed: %s", exc)
+                tool_calls.append({
+                    "tool": "knowledge_search",
+                    "input": state["query"][:200],
+                    "error": str(exc),
+                })
+
+        step = self._step("supervisor", "legal_research",
+            input=state["query"][:200],
+            output=f"articles={len(articles)}, tool_results={len(tool_calls)}",
+            tool_calls=tool_calls,
+        )
+        steps.append(step)
+
+        return {
+            "research_results": articles,
+            "error": None,
+            "metadata": {
+                **state.get("metadata", {}),
+                "research_complete": True,
+                "tool_invoked": self.knowledge_search_tool is not None,
+                "tool_result_count": len(tool_calls),
+            },
+            "reasoning_steps": steps,
+        }
+
     async def execute_citation_check(self, state: SupervisorState) -> dict:
         steps = list(state.get("reasoning_steps", []))
         try:
-            citations = await self.citation_agent.run(
-                state.get("research_results", []), state["query"])
+            citations = await retry_with_backoff(
+                lambda: self.citation_agent.run(
+                    state.get("research_results", []), state["query"]),
+                max_attempts=config.tool_retry_max_attempts,
+                base_delay=config.tool_retry_base_delay,
+                desc="citation_check",
+            )
             logger.info("citation check: %d verified", len(citations))
             new_retry = state.get("retry_count", 0) + (0 if citations else 1)
 
@@ -236,8 +267,17 @@ class SupervisorAgent:
         new_retry = state.get("retry_count", 0) + 1
         steps = list(state.get("reasoning_steps", []))
         try:
-            result = await self.synthesis_agent.synthesize(
-                state["query"], state.get("verified_citations", []))
+            result = await retry_with_backoff(
+                lambda: self.synthesis_agent.synthesize(
+                    state["query"], state.get("verified_citations", [])),
+                max_attempts=config.tool_retry_max_attempts,
+                base_delay=config.tool_retry_base_delay,
+                desc="response_synthesis",
+            )
+
+            if not self._validate_subagent_response(result, ["response"]):
+                raise ValueError("Synthesis response missing required fields")
+
             step = self._step("supervisor", "response_synthesis",
                 input=f"citations={len(state.get('verified_citations',[]))}",
                 output=f"response_length={len(result['response'])}",
@@ -259,10 +299,14 @@ class SupervisorAgent:
         response  = state.get("final_response") or ""
         citations = state.get("verified_citations", [])
         score = 0.0
-        if response:                                           score += 0.4
-        if citations:                                          score += 0.3
-        if any(c.article_id in response for c in citations):  score += 0.2
-        if len(response) > 100:                               score += 0.1
+        if response:
+            score += 0.4
+        if citations:
+            score += 0.3
+        if any(c.article_id in response for c in citations):
+            score += 0.2
+        if len(response) > 100:
+            score += 0.1
         logger.info("quality: %.2f", score)
 
         step = self._step("supervisor", "validate_quality",
@@ -281,18 +325,25 @@ class SupervisorAgent:
 
     def route_after_citation_check(self, state: SupervisorState) -> str:
         if state.get("error"):
+            if state.get("retry_count", 0) >= MAX_RETRIES:
+                logger.warning("Max retries on citation check, proceeding to synthesis")
+                return "synthesis"
             return "error"
         if not state.get("verified_citations"):
             if state.get("retry_count", 0) >= MAX_RETRIES:
-                logger.warning("Max retries reached, proceeding to synthesis")
+                logger.warning("Max retries reached, proceeding to synthesis with empty citations")
                 return "synthesis"
             return "retry_research"
         return "synthesis"
 
     def route_after_validation(self, state: SupervisorState) -> str:
-        if state.get("error"):                               return "error"
-        if (state.get("quality_score") or 0) >= QUALITY_THRESHOLD: return "complete"
-        if state.get("retry_count", 0) >= MAX_RETRIES:     return "error"
+        if state.get("error"):
+            return "error"
+        if (state.get("quality_score") or 0) >= QUALITY_THRESHOLD:
+            return "complete"
+        if state.get("retry_count", 0) >= MAX_RETRIES:
+            logger.warning("Max retries on quality, returning best-effort")
+            return "complete"
         return "retry_synthesis"
 
     # ── public API ─────────────────────────────────────────────────────────
@@ -322,7 +373,7 @@ class SupervisorAgent:
             )
             history_messages.insert(0, summary_message)
 
-        return await self.workflow.ainvoke({
+        result = await self.workflow.ainvoke({
             "messages": [*history_messages, HumanMessage(content=query)],
             "query": query, "user_id": user_id, "session_id": session_id,
             "legal_domain": None, "task_plan": [], "research_results": [],
@@ -331,3 +382,9 @@ class SupervisorAgent:
             "metadata": metadata or {},
             "reasoning_steps": [],
         })
+
+        if result.get("error") and not result.get("final_response"):
+            logger.error("All sub-agents failed: %s", result.get("error"))
+            result["final_response"] = _FALLBACK_RESPONSE
+
+        return result

@@ -139,6 +139,12 @@ class AppConfig:
     relevance_threshold: float = _float_env("RELEVANCE_THRESHOLD", 0.5)
 
     # ------------------------------------------------------------------
+    # Retry / Error Recovery
+    # ------------------------------------------------------------------
+    tool_retry_max_attempts: int = _int_env("TOOL_RETRY_MAX_ATTEMPTS", 3)
+    tool_retry_base_delay: float = _float_env("TOOL_RETRY_BASE_DELAY", 1.0)
+
+    # ------------------------------------------------------------------
     # Session / Memory
     # ------------------------------------------------------------------
     session_ttl_seconds: int = _int_env("SESSION_TTL_SECONDS", 3600)
