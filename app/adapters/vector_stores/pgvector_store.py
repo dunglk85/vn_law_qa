@@ -5,7 +5,6 @@ import asyncio
 import psycopg
 from langchain_postgres import PGVector
 from langchain_core.documents import Document
-from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 
@@ -127,14 +126,14 @@ class PGVectorStoreAdapter(VectorStorePort):
         results = await asyncio.to_thread(store.mget, ids)
         return [doc for doc in results if doc is not None]
 
-    def as_retriever(self, search_kwargs: Optional[dict] = None) -> VectorStoreRetriever:
+    def as_retriever(self, search_kwargs: Optional[dict] = None) -> BaseRetriever:
         """Return a retriever that uses sync similarity_search via thread pool."""
-        self._get_store()  # ensure store is initialised
+        self._get_store()
         kwargs = search_kwargs or {}
         wrapper = _SyncRetriever()
         wrapper._store = self._store
         wrapper._search_kwargs = kwargs
-        return wrapper  # type: ignore
+        return wrapper
 
     async def create_index(self) -> None:
         match config.index_type:

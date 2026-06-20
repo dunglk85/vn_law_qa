@@ -1,10 +1,11 @@
 # app/api.py
 from __future__ import annotations
 import asyncio
+import logging
 import time
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -17,6 +18,13 @@ from app.factory import (
 )
 from app.core.ingest_service import run_ingest
 from app.core.rag_service import RAGService
+
+logger = logging.getLogger(__name__)
+
+_ASK_TIMEOUT = 120.0
+_RATE_LIMIT_MAX = 30
+_RATE_LIMIT_WINDOW = 60.0
+_rate_limit_store: dict[str, list[float]] = {}
 
 # --------------------------------------------------------------------------- #
 # App bootstrap                                                                #
@@ -146,23 +154,51 @@ async def ingest_status() -> dict:
     return {"ok": True, **_ingest_last}
 
 
-@app.post("/ask")
-async def ask(q: AskRequest) -> dict:
-    start = time.perf_counter()
+def _check_rate_limit(client_ip: str) -> bool:
+    now = time.time()
+    window_start = now - _RATE_LIMIT_WINDOW
+    if client_ip not in _rate_limit_store:
+        _rate_limit_store[client_ip] = []
+    _rate_limit_store[client_ip] = [t for t in _rate_limit_store[client_ip] if t > window_start]
+    if len(_rate_limit_store[client_ip]) >= _RATE_LIMIT_MAX:
+        return False
+    _rate_limit_store[client_ip].append(now)
+    return True
 
-    if _agentic_service:
-        answer, sources, contexts = await _agentic_service.answer(
-            question=q.question,
-            category=q.category,
+
+@app.post("/ask")
+async def ask(q: AskRequest, request: Request) -> dict:
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(client_ip):
+        return JSONResponse(
+            {"ok": False, "message": "Rate limit exceeded. Try again later."},
+            status_code=429,
         )
-    else:
-        answer, sources, contexts = await _rag_service.answer(
-            question=q.question,
-            category=q.category,
+
+    start = time.perf_counter()
+    logger.info("POST /ask question=%.80s client=%s", q.question, client_ip)
+
+    try:
+        async with asyncio.timeout(_ASK_TIMEOUT):
+            if _agentic_service:
+                answer, sources, contexts = await _agentic_service.answer(
+                    question=q.question,
+                    category=q.category,
+                )
+            else:
+                answer, sources, contexts = await _rag_service.answer(
+                    question=q.question,
+                    category=q.category,
+                )
+    except asyncio.TimeoutError:
+        logger.error("/ask timed out after %.0fs", _ASK_TIMEOUT)
+        return JSONResponse(
+            {"ok": False, "message": "Request timed out. Please try again."},
+            status_code=504,
         )
 
     elapsed = time.perf_counter() - start
-    print(f"⏱️  /ask took {elapsed:.2f}s")
+    logger.info("/ask completed in %.2fs client=%s", elapsed, client_ip)
 
     return {
         "answer": answer,

@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 
 from langchain_core.documents import Document
-from langchain_core.vectorstores import VectorStoreRetriever
+from langchain_core.retrievers import BaseRetriever
 
 
 class VectorStorePort(ABC):
@@ -35,8 +35,8 @@ class VectorStorePort(ABC):
         ...
 
     @abstractmethod
-    def as_retriever(self, search_kwargs: Optional[dict] = None) -> VectorStoreRetriever:
-        """Return a LangChain VectorStoreRetriever for chain composition."""
+    def as_retriever(self, search_kwargs: Optional[dict] = None) -> BaseRetriever:
+        """Return a LangChain BaseRetriever for chain composition."""
         ...
 
     @abstractmethod

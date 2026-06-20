@@ -118,7 +118,7 @@ class SupervisorAgent:
             articles = await self.research_agent.run(state["query"])
             logger.info("research: %d articles (retry=%d)",
                         len(articles), state.get("retry_count", 0))
-            return {"research_results": articles,
+            return {"research_results": articles, "error": None,
                     "metadata": {**state.get("metadata", {}), "research_complete": True}}
         except Exception as exc:
             logger.error("LegalResearchAgent failed: %s", exc)
@@ -167,15 +167,15 @@ class SupervisorAgent:
             return "error"
         if not state.get("verified_citations"):
             if state.get("retry_count", 0) >= MAX_RETRIES:
-                logger.warning("Max retries reached")
-                return "error"
+                logger.warning("Max retries reached, proceeding to synthesis")
+                return "synthesis"
             return "retry_research"
         return "synthesis"
 
     def route_after_validation(self, state: SupervisorState) -> str:
         if state.get("error"):                               return "error"
         if (state.get("quality_score") or 0) >= QUALITY_THRESHOLD: return "complete"
-        if state.get("retry_count", 0) >= MAX_RETRIES:     return "complete"
+        if state.get("retry_count", 0) >= MAX_RETRIES:     return "error"
         return "retry_synthesis"
 
     # ── public API ─────────────────────────────────────────────────────────

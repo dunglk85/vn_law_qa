@@ -17,8 +17,16 @@
   along with VN-Law-Advisor.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import os
+
 from peewee import MySQLDatabase
 
-DATABASE = 'mysql://root:123456789@localhost:3306/law'
-db = MySQLDatabase(database='law', user='root', password='123456789')
+_DB_USER = os.getenv("LAW_DB_USER", "root")
+_DB_PASS = os.getenv("LAW_DB_PASSWORD", "123456789")
+_DB_HOST = os.getenv("LAW_DB_HOST", "localhost")
+_DB_PORT = int(os.getenv("LAW_DB_PORT", "3306"))
+_DB_NAME = os.getenv("LAW_DB_NAME", "law")
+
+DATABASE = f'mysql://{_DB_USER}:{_DB_PASS}@{_DB_HOST}:{_DB_PORT}/{_DB_NAME}'
+db = MySQLDatabase(database=_DB_NAME, user=_DB_USER, password=_DB_PASS, host=_DB_HOST, port=_DB_PORT)
 

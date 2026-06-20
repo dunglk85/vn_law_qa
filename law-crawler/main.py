@@ -28,27 +28,25 @@ import uuid
 # db.drop_tables([PDMucLienQuan ,PDTable, PDFile , PDDieu, PDChuong, PDDeMuc, PDChuDe])
 # db.create_tables([PDMucLienQuan ,PDTable, PDFile, PDDieu, PDChuong , PDDeMuc, PDChuDe])
 
-checkpoint = "d8e4a3a0-254c-4593-967c-214ae12bcb0f.html"
+checkpoint = os.getenv("LAW_CHECKPOINT", "d8e4a3a0-254c-4593-967c-214ae12bcb0f.html")
 
 # Đọc Chủ đề
 print("Load Chủ Đề Từ File ...")
-with open("./phap-dien/chude.json", "r") as chude_file:
+with open("./phap-dien/chude.json", "r", encoding="utf-8") as chude_file:
     chudes = json.load(chude_file)
-chude_file.close()
 
 print("Insert tất cả chủ đề...")
 try:
     with db.atomic():
         PDChuDe.bulk_create([PDChuDe(ten=chude["Text"], stt=chude["STT"], id=chude["Value"]) for chude in chudes])
     print("Inserted tất cả chủ đề pháp điển!")
-except:
+except Exception:
     pass
 
 # Đọc Đề mục
 print("Load Đề Mục Từ File ...")
-with open("./phap-dien/demuc.json", "r") as demuc_file:
+with open("./phap-dien/demuc.json", "r", encoding="utf-8") as demuc_file:
     demucs = json.load(demuc_file)
-demuc_file.close()
 
 print("Insert tất cả chủ đề...")
 try:
@@ -56,27 +54,28 @@ try:
         PDDeMuc.bulk_create(
             [PDDeMuc(ten=demuc["Text"], stt=demuc["STT"], id=demuc["Value"], chude_id=demuc["ChuDe"]) for demuc in
              demucs])
-except:
+except Exception:
     pass
 print("Inserted tất cả đề mục pháp điển!")
 
 print("Load Tree Nodes Từ File ...")
-with open("./phap-dien/treeNode.json", "r") as tree_nodes_file:
+with open("./phap-dien/treeNode.json", "r", encoding="utf-8") as tree_nodes_file:
     tree_nodes = json.load(tree_nodes_file)
-tree_nodes_file.close()
 
 print("Insert tất cả nodes...")
 demuc_directory = os.fsencode("./phap-dien/demuc")
 dieus_lienquan = []
 
 count = 0
-if checkpoint:
-    isSkipping = True
-else:
-    isSkipping = False
+isSkipping = bool(checkpoint)
+if isSkipping:
+    demuc_files = [os.fsdecode(f) for f in os.listdir(demuc_directory)]
+    if checkpoint not in demuc_files:
+        print(f"Checkpoint '{checkpoint}' not found, starting from beginning")
+        isSkipping = False
 for file in os.listdir(demuc_directory):
     file_name = os.fsdecode(file)
-    with open("./phap-dien/demuc/" + file_name, "r") as demuc_file:
+    with open("./phap-dien/demuc/" + file_name, "r", encoding="utf-8") as demuc_file:
         count +=1
         if file_name == checkpoint:
             isSkipping = False
@@ -103,7 +102,7 @@ for file in os.listdir(demuc_directory):
                                 mapc=mapc, chimuc=chuong["ChiMuc"],
                                 stt=stt,
                                 demuc_id=chuong["DeMucID"])
-            except:
+            except Exception:
                 continue
             chuongs_data.append(chuong_data)
 
@@ -150,7 +149,7 @@ for file in os.listdir(demuc_directory):
                 PDDieu.create(ten=ten, mapc=mapc, chimuc=dieu["ChiMuc"], stt=stt,
                               noidung=noidung, vbqppl=vbqppl, vbqppl_link=vbqppl_link,
                               demuc_id=dieu["DeMucID"], chuong_id=dieu["ChuongID"])
-            except:
+            except Exception:
                 continue
             for table in tables:
                 PDTable.create(dieu_id=mapc, html=table)
@@ -162,7 +161,7 @@ for file in os.listdir(demuc_directory):
                 link = element["href"]
                 try:
                     PDFile.create(dieu_id=dieu["MAPC"], link=link, path="")
-                except:
+                except Exception:
                     print("Lỗi insert file " + link)
 
                 element = element.nextSibling
@@ -184,7 +183,7 @@ print("Inserted tất cả nodes pháp điển!")
 for dieu_lienquan in dieus_lienquan:
     try:
         PDMucLienQuan.create(dieu_id1=dieu_lienquan["dieu_id1"], dieu_id2=dieu_lienquan["dieu_id2"])
-    except:
+    except Exception:
         print(f'Không thể insert liên quan {dieu_lienquan["dieu_id1"]} - {dieu_lienquan["dieu_id2"]}')
     print(f'Inserted liên quan {dieu_lienquan["dieu_id1"]} - {dieu_lienquan["dieu_id2"]}')
 

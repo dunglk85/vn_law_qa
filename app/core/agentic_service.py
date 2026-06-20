@@ -4,6 +4,7 @@ This module wires the supervisor workflow and generic adapters together
 without depending on any concrete backend implementation.
 """
 from __future__ import annotations
+import asyncio
 import logging
 from typing import List, Optional, Tuple
 
@@ -20,6 +21,7 @@ from app.agents.supervisor_agent import SupervisorAgent
 logger = logging.getLogger(__name__)
 
 _NO_CONTEXT_ANSWER = "I don't know. No relevant context was found to answer your question."
+_AGENT_TIMEOUT = 90.0
 
 
 class AgenticService:
@@ -66,12 +68,19 @@ class AgenticService:
         transformed_queries = await self._query_transformer.transform(question)
         question_for_agents = transformed_queries[0] if transformed_queries else question
 
-        result = await self._supervisor.run(
-            question_for_agents,
-            user_id=user_id,
-            session_id=session_id,
-            metadata={"category": category} if category else {},
-        )
+        try:
+            result = await asyncio.wait_for(
+                self._supervisor.run(
+                    question_for_agents,
+                    user_id=user_id,
+                    session_id=session_id,
+                    metadata={"category": category} if category else {},
+                ),
+                timeout=_AGENT_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.error("Supervisor timed out after %.0fs", _AGENT_TIMEOUT)
+            return _NO_CONTEXT_ANSWER, [], []
 
         answer = result.get("final_response") or _NO_CONTEXT_ANSWER
         citations = result.get("verified_citations") or []

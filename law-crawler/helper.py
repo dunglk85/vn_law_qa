@@ -21,7 +21,7 @@ import re
 
 def convert_roman_to_num(roman_num):
     roman_num = roman_num.upper()
-    roman_to_num = {'I': 10, 'V': 50, 'X': 100, 'L': 500, 'C': 1000, 'D': 5000, 'M': 10000}
+    roman_to_num = {'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000}
     alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
     num = 0
     for i in range(len(roman_num)):
