@@ -192,6 +192,7 @@ class SupervisorAgent:
         session_id: str,
         metadata: dict[str, Any] | None = None,
         conversation_history: list[dict] | None = None,
+        summary_context: str = "",
     ) -> dict:
         history_messages: list[BaseMessage] = []
         if conversation_history:
@@ -202,6 +203,12 @@ class SupervisorAgent:
                     history_messages.append(AIMessage(content=content))
                 else:
                     history_messages.append(HumanMessage(content=content))
+
+        if summary_context:
+            summary_message = HumanMessage(
+                content=f"[SYSTEM: The following is a summary of earlier conversation context]\n{summary_context}"
+            )
+            history_messages.insert(0, summary_message)
 
         return await self.workflow.ainvoke({
             "messages": [*history_messages, HumanMessage(content=query)],

@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+_SESSION_DATA_DEFAULT: dict = {"history": [], "summary": ""}
+
 
 class SessionStorePort(ABC):
     @abstractmethod
-    async def load(self, session_id: str) -> list[dict]:
+    async def load(self, session_id: str) -> dict:
         ...
 
     @abstractmethod
-    async def save(self, session_id: str, history: list[dict]) -> None:
+    async def save(self, session_id: str, session_data: dict) -> None:
         ...
 
     @abstractmethod

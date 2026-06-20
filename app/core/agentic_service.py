@@ -64,22 +64,76 @@ class AgenticService:
                 logger.warning("Warmup query failed (non-fatal): %s", exc)
             self._warmed_up = True
 
-    async def _load_history(self, session_id: str) -> list[dict]:
+    async def _load_session(self, session_id: str) -> dict:
         if self._session_store is None:
-            return []
+            return {"history": [], "summary": ""}
         try:
             return await self._session_store.load(session_id)
         except Exception as exc:
             logger.warning("Session store unavailable, running stateless: %s", exc)
-            return []
+            return {"history": [], "summary": ""}
 
-    async def _save_history(self, session_id: str, history: list[dict]) -> None:
+    async def _save_session(self, session_id: str, session_data: dict) -> None:
         if self._session_store is None:
             return
         try:
-            await self._session_store.save(session_id, history)
+            await self._session_store.save(session_id, session_data)
         except Exception as exc:
-            logger.warning("Failed to save session history: %s", exc)
+            logger.warning("Failed to save session: %s", exc)
+
+    def _estimate_tokens(self, texts: list[str]) -> int:
+        total = 0
+        for t in texts:
+            total += len(t) // 4
+        return total
+
+    def _summarize_with_llm(self, texts: list[str]) -> str:
+        chat_model = self._llm.get_chat_model()
+        prompt = (
+            "Summarize the following conversation, preserving key facts, "
+            "decisions, user preferences, and any specific data mentioned. "
+            "Keep the summary concise but informative.\n\n"
+            "---\n"
+        )
+        for t in texts:
+            prompt += f"{t}\n"
+        prompt += "\n---\nSummary:"
+        result = chat_model.invoke(prompt)
+        return result.content.strip()
+
+    def _compress_history(
+        self,
+        history: list[dict],
+        existing_summary: str,
+    ) -> tuple[list[dict], str]:
+        recent_count = config.recent_turns_to_keep * 2
+
+        if len(history) <= recent_count:
+            return history, existing_summary
+
+        older = history[:-recent_count]
+        recent = history[-recent_count:]
+
+        older_texts = []
+        for turn in older:
+            role = turn.get("role", "user")
+            content = turn.get("content", "")
+            older_texts.append(f"{role}: {content}")
+
+        combined_text = existing_summary + "\n" + "\n".join(older_texts) if existing_summary else "\n".join(older_texts)
+        token_count = self._estimate_tokens([combined_text])
+
+        if token_count > config.max_history_tokens:
+            try:
+                new_summary = self._summarize_with_llm([combined_text])
+                logger.info("History compressed: %d older turns summarized", len(older))
+            except Exception as exc:
+                logger.warning("Summarization failed, keeping raw history: %s", exc)
+                return history, existing_summary
+        else:
+            new_summary = combined_text
+
+        return recent, new_summary
 
     async def answer(
         self,
@@ -91,7 +145,11 @@ class AgenticService:
     ) -> tuple[str, list[str], list[str]]:
         await self._ensure_warmup()
 
-        conversation_history = await self._load_history(session_id)
+        session_data = await self._load_session(session_id)
+        history = session_data.get("history", [])
+        summary = session_data.get("summary", "")
+
+        history, summary = self._compress_history(history, summary)
 
         transformed_queries = await self._query_transformer.transform(question)
         question_for_agents = transformed_queries[0] if transformed_queries else question
@@ -102,6 +160,8 @@ class AgenticService:
         if tenant_id and tenant_id != "*":
             metadata["tenant_id"] = tenant_id
 
+        summary_context = f"[Previous conversation summary]\n{summary}" if summary else ""
+
         try:
             result = await asyncio.wait_for(
                 self._supervisor.run(
@@ -109,7 +169,8 @@ class AgenticService:
                     user_id=user_id,
                     session_id=session_id,
                     metadata=metadata,
-                    conversation_history=conversation_history,
+                    conversation_history=history,
+                    summary_context=summary_context,
                 ),
                 timeout=config.agent_timeout,
             )
@@ -122,9 +183,9 @@ class AgenticService:
         sources = sorted({c.article_id for c in citations})
         contexts = [c.content for c in citations]
 
-        conversation_history.append({"role": "user", "content": question, "timestamp": time.time()})
-        conversation_history.append({"role": "assistant", "content": answer, "timestamp": time.time()})
-        await self._save_history(session_id, conversation_history)
+        history.append({"role": "user", "content": question, "timestamp": time.time()})
+        history.append({"role": "assistant", "content": answer, "timestamp": time.time()})
+        await self._save_session(session_id, {"history": history, "summary": summary})
 
         return answer, sources, contexts
 

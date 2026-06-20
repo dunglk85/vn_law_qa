@@ -139,9 +139,11 @@ class AppConfig:
     relevance_threshold: float = _float_env("RELEVANCE_THRESHOLD", 0.5)
 
     # ------------------------------------------------------------------
-    # Session
+    # Session / Memory
     # ------------------------------------------------------------------
     session_ttl_seconds: int = _int_env("SESSION_TTL_SECONDS", 3600)
+    max_history_tokens: int = _int_env("MAX_HISTORY_TOKENS", 4096)
+    recent_turns_to_keep: int = _int_env("RECENT_TURNS_TO_KEEP", 4)
 
     # ------------------------------------------------------------------
     # Auth / JWT

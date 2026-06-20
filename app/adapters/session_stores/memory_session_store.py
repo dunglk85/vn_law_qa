@@ -3,13 +3,13 @@ from __future__ import annotations
 import copy
 import time
 
-from app.ports.session_store import SessionStorePort
+from app.ports.session_store import _SESSION_DATA_DEFAULT, SessionStorePort
 
 
 class MemorySessionStore(SessionStorePort):
     def __init__(self, ttl_seconds: int = 3600) -> None:
         self._ttl = ttl_seconds
-        self._store: dict[str, tuple[list[dict], float]] = {}
+        self._store: dict[str, tuple[dict, float]] = {}
 
     def _is_expired(self, timestamp: float) -> bool:
         return time.time() - timestamp > self._ttl
@@ -19,15 +19,19 @@ class MemorySessionStore(SessionStorePort):
         for sid in expired:
             del self._store[sid]
 
-    async def load(self, session_id: str) -> list[dict]:
+    async def load(self, session_id: str) -> dict:
         self._evict_expired()
         entry = self._store.get(session_id)
         if entry is None:
-            return []
+            return dict(_SESSION_DATA_DEFAULT)
         return copy.deepcopy(entry[0])
 
-    async def save(self, session_id: str, history: list[dict]) -> None:
-        self._store[session_id] = (copy.deepcopy(history), time.time())
+    async def save(self, session_id: str, session_data: dict) -> None:
+        payload = {
+            "history": copy.deepcopy(session_data.get("history", [])),
+            "summary": session_data.get("summary", ""),
+        }
+        self._store[session_id] = (payload, time.time())
 
     async def delete(self, session_id: str) -> None:
         self._store.pop(session_id, None)
