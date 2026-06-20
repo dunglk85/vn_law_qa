@@ -46,13 +46,16 @@ class AgenticService:
             from app.agents.legal_research_agent import LegalResearchAgent
             from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
             from app.agents.supervisor_agent import SupervisorAgent
+            from app.agents.tools.knowledge_search import create_knowledge_search_tool
 
             chat_model = llm.get_chat_model()
+            knowledge_search_tool = create_knowledge_search_tool(retriever, k=config.retrieval_k)
             self._supervisor = SupervisorAgent(
                 research_agent=LegalResearchAgent(self._retriever, chat_model),
                 citation_agent=CitationCheckerAgent(self._vector_store, chat_model),
                 synthesis_agent=ResponseSynthesizerAgent(chat_model),
                 llm=chat_model,
+                knowledge_search_tool=knowledge_search_tool,
             )
         self._warmed_up = False
 

@@ -48,6 +48,7 @@ class SupervisorAgent:
         citation_agent:  CitationCheckerAgent,
         synthesis_agent: ResponseSynthesizerAgent,
         llm: Optional[BaseChatModel] = None,
+        knowledge_search_tool=None,
     ):
         if llm is None:
             raise ValueError("SupervisorAgent requires a chat model")
@@ -55,6 +56,7 @@ class SupervisorAgent:
         self.citation_agent  = citation_agent
         self.synthesis_agent = synthesis_agent
         self.llm             = llm
+        self.knowledge_search_tool = knowledge_search_tool
         self.workflow        = self._build_workflow()
 
     # ── graph ──────────────────────────────────────────────────────────────
@@ -120,8 +122,25 @@ class SupervisorAgent:
             articles = await self.research_agent.run(state["query"])
             logger.info("research: %d articles (retry=%d)",
                         len(articles), state.get("retry_count", 0))
-            return {"research_results": articles, "error": None,
-                    "metadata": {**state.get("metadata", {}), "research_complete": True}}
+
+            tool_results = []
+            if self.knowledge_search_tool is not None:
+                try:
+                    tool_results = await self.knowledge_search_tool.ainvoke({"query": state["query"]})
+                    logger.info("knowledge_search_tool: %d results", len(tool_results))
+                except Exception as exc:
+                    logger.warning("knowledge_search_tool failed: %s", exc)
+
+            return {
+                "research_results": articles,
+                "error": None,
+                "metadata": {
+                    **state.get("metadata", {}),
+                    "research_complete": True,
+                    "tool_invoked": self.knowledge_search_tool is not None,
+                    "tool_result_count": len(tool_results),
+                },
+            }
         except Exception as exc:
             logger.error("LegalResearchAgent failed: %s", exc)
             return {"error": str(exc), "research_results": []}
