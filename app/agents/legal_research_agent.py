@@ -7,12 +7,14 @@ Pipeline:
     → rank_results       (parallel LLM re-ranker, blended score)
 """
 import asyncio
+import hashlib
 import logging
 from typing import Optional, TypedDict, Any
 
-from langchain_openai import ChatOpenAI
+from langchain_core.language_models import BaseChatModel
 from langgraph.graph import END, START, StateGraph
 
+from app.ports.retriever import RetrieverPort
 from shared import (
     Article, parse_json, parse_list,
     N_RESULTS_PER_VECTOR, TOP_K_RESEARCH, TOP_K_LLM_SCORE,
@@ -33,9 +35,11 @@ class LegalResearchState(TypedDict):
 
 
 class LegalResearchAgent:
-    def __init__(self, chroma_client, llm: Optional[ChatOpenAI] = None):
-        self.chroma = chroma_client
-        self.llm    = llm or ChatOpenAI(model="gpt-4o", temperature=0)
+    def __init__(self, retriever: RetrieverPort, llm: Optional[BaseChatModel] = None):
+        if llm is None:
+            raise ValueError("LegalResearchAgent requires a chat model")
+        self.retriever = retriever
+        self.llm = llm
         self.workflow = self._build_workflow()
 
     # ── graph ──────────────────────────────────────────────────────────────
@@ -99,27 +103,27 @@ class LegalResearchAgent:
 
     async def retrieve_articles(self, state: LegalResearchState) -> dict:
         vectors = state.get("query_vectors") or [state["query"]]
-        loop    = asyncio.get_event_loop()
+        retriever = self.retriever.get_retriever(search_kwargs={"k": N_RESULTS_PER_VECTOR})
 
         async def _query(v: str) -> list[Article]:
             try:
-                res = await loop.run_in_executor(
-                    None,
-                    lambda: self.chroma.query(
-                        query_texts=[v], n_results=N_RESULTS_PER_VECTOR,
-                        include=["documents", "metadatas", "distances"],
-                    ),
-                )
-                return [
-                    Article(id=i, content=d, metadata=m,
-                            relevance_score=round(1.0 - dist, 4))
-                    for i, d, m, dist in zip(
-                        res["ids"][0], res["documents"][0],
-                        res["metadatas"][0], res["distances"][0],
+                docs = await retriever.ainvoke(v)
+                results: list[Article] = []
+                for doc in docs:
+                    metadata = doc.metadata or {}
+                    chunk_id = metadata.get("chunk_id") or f"{metadata.get('source','unknown')}::{hashlib.md5(doc.page_content.encode()).hexdigest()}"
+                    relevance_score = float(metadata.get("score", -1.0) or -1.0)
+                    results.append(
+                        Article(
+                            id=chunk_id,
+                            content=doc.page_content,
+                            metadata={**metadata, "chunk_id": chunk_id},
+                            relevance_score=relevance_score,
+                        )
                     )
-                ]
+                return results
             except Exception as exc:
-                logger.error("ChromaDB query failed: %s", exc)
+                logger.error("Retrieve articles failed: %s", exc)
                 return []
 
         batches = await asyncio.gather(*[_query(v) for v in vectors])
@@ -153,9 +157,12 @@ class LegalResearchAgent:
         ranked = sorted(scored, key=_blend, reverse=True)
         final: list[Article] = []
         for a, s in ranked[:TOP_K_RESEARCH]:
-            a.metadata["llm_relevance_score"] = s
-            a.metadata["blended_score"]       = round(_blend((a, s)), 4)
-            final.append(a)
+            final.append(Article(
+                id=a.id,
+                content=a.content,
+                metadata={**a.metadata, "llm_relevance_score": s, "blended_score": round(_blend((a, s)), 4)},
+                relevance_score=a.relevance_score,
+            ))
 
         return {"ranked_articles": final,
                 "metadata": {**state.get("metadata", {}), "ranked_count": len(final)}}
@@ -171,7 +178,7 @@ class LegalResearchAgent:
             data = parse_json(r.content, "_llm_score")
             return article, max(0.0, min(10.0, float(data.get("score", 5))))
         except Exception as exc:
-            logger.warning("LLM score failed %s: %s", article.id, exc)
+            logger.warning("LLM score failed %s: %s (defaulting to 5.0)", article.id, exc)
             return article, 5.0
 
     # ── public API ─────────────────────────────────────────────────────────

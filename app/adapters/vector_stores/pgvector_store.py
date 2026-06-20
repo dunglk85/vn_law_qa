@@ -122,13 +122,14 @@ class PGVectorStoreAdapter(VectorStorePort):
         store = self._get_store()
         return await asyncio.to_thread(store.similarity_search, query, k, filter)
 
+    async def get_documents_by_ids(self, ids: list[str]) -> List[Document]:
+        store = self._get_store()
+        results = await asyncio.to_thread(store.mget, ids)
+        return [doc for doc in results if doc is not None]
+
     def as_retriever(self, search_kwargs: Optional[dict] = None) -> VectorStoreRetriever:
         """Return a retriever that uses sync similarity_search via thread pool."""
-        if self._store is None:
-            raise RuntimeError(
-                "PGVectorStoreAdapter: store not initialised. "
-                "Call `await add_documents(...)` or `await similarity_search(...)` first."
-            )
+        self._get_store()  # ensure store is initialised
         kwargs = search_kwargs or {}
         wrapper = _SyncRetriever()
         wrapper._store = self._store

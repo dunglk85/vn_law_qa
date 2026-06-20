@@ -39,6 +39,9 @@ class AppConfig:
     metadata_enricher_type: str = os.getenv("METADATA_ENRICHER_TYPE", "basic")
     # basic | llm | none
 
+    rag_mode: str = os.getenv("RAG_MODE", "legacy")
+    # legacy (RAGService) | agentic (AgenticService)
+
     # ------------------------------------------------------------------
     # Connection strings
     # ------------------------------------------------------------------

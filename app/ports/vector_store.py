@@ -30,6 +30,11 @@ class VectorStorePort(ABC):
         ...
 
     @abstractmethod
+    async def get_documents_by_ids(self, ids: list[str]) -> List[Document]:
+        """Return a list of documents by their unique IDs."""
+        ...
+
+    @abstractmethod
     def as_retriever(self, search_kwargs: Optional[dict] = None) -> VectorStoreRetriever:
         """Return a LangChain VectorStoreRetriever for chain composition."""
         ...

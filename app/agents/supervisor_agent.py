@@ -10,8 +10,8 @@ LangGraph persists it. Routers are pure functions — never mutate state.
 import logging
 from typing import Annotated, Optional, TypedDict, Any
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
-from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
@@ -47,12 +47,12 @@ class SupervisorAgent:
         research_agent:  LegalResearchAgent,
         citation_agent:  CitationCheckerAgent,
         synthesis_agent: ResponseSynthesizerAgent,
-        llm: Optional[ChatOpenAI] = None,
+        llm: Optional[BaseChatModel] = None,
     ):
         self.research_agent  = research_agent
         self.citation_agent  = citation_agent
         self.synthesis_agent = synthesis_agent
-        self.llm             = llm or ChatOpenAI(model="gpt-4o", temperature=0)
+        self.llm             = llm
         self.workflow        = self._build_workflow()
 
     # ── graph ──────────────────────────────────────────────────────────────
@@ -180,11 +180,12 @@ class SupervisorAgent:
 
     # ── public API ─────────────────────────────────────────────────────────
 
-    async def run(self, query: str, user_id: str, session_id: str) -> dict:
+    async def run(self, query: str, user_id: str, session_id: str, metadata: Optional[dict[str, Any]] = None) -> dict:
         return await self.workflow.ainvoke({
             "messages": [HumanMessage(content=query)],
             "query": query, "user_id": user_id, "session_id": session_id,
             "legal_domain": None, "task_plan": [], "research_results": [],
             "verified_citations": [], "final_response": None,
-            "quality_score": None, "error": None, "retry_count": 0, "metadata": {},
+            "quality_score": None, "error": None, "retry_count": 0,
+            "metadata": metadata or {},
         })

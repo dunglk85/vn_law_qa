@@ -2,7 +2,7 @@
 import logging
 from typing import Optional
 
-from langchain_openai import ChatOpenAI
+from langchain_core.language_models import BaseChatModel
 
 from shared import Citation, format_citations
 
@@ -10,10 +10,18 @@ logger = logging.getLogger(__name__)
 
 
 class ResponseSynthesizerAgent:
-    def __init__(self, llm: Optional[ChatOpenAI] = None):
-        self.llm = llm or ChatOpenAI(model="gpt-4o", temperature=0)
+    def __init__(self, llm: Optional[BaseChatModel] = None):
+        if llm is None:
+            raise ValueError("ResponseSynthesizerAgent requires a chat model")
+        self.llm = llm
 
     async def synthesize(self, query: str, citations: list[Citation]) -> dict:
+        if not citations:
+            return {
+                "response": "Không tìm thấy điều luật liên quan để trả lời câu hỏi này.",
+                "citations": [],
+                "metadata": {"citation_count": 0, "response_length": 0},
+            }
         prompt = (
             "Bạn là trợ lý tư vấn pháp luật Việt Nam. "
             "Trả lời câu hỏi dựa trên các điều luật đã xác minh sau.\n\n"

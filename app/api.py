@@ -9,7 +9,12 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app.factory import create_cache, create_chunker, create_embeddings, create_llm, create_metadata_enricher, create_query_transformer, create_reranker, create_retriever, create_vector_store
+from app.config import config
+from app.factory import (
+    create_cache, create_chunker, create_embeddings, create_llm,
+    create_metadata_enricher, create_query_transformer, create_reranker,
+    create_retriever, create_vector_store, create_agentic_service,
+)
 from app.core.ingest_service import run_ingest
 from app.core.rag_service import RAGService
 
@@ -53,6 +58,22 @@ _rag_service = RAGService(
     retriever=_retriever,
     query_transformer=_query_transformer,
 )
+
+# AgenticService: optional alternative using LangGraph agents
+_agentic_service = None
+_VALID_RAG_MODES = {"legacy", "agentic"}
+if config.rag_mode.lower() not in _VALID_RAG_MODES:
+    print(f"WARNING: Unknown RAG_MODE='{config.rag_mode}'. Falling back to legacy. Valid: {_VALID_RAG_MODES}")
+if config.rag_mode.lower() == "agentic":
+    _agentic_service = create_agentic_service(
+        vector_store=_vector_store,
+        llm=_llm,
+        retriever=_retriever,
+        query_transformer=_query_transformer,
+    )
+    print(f"RAG_MODE=agentic: AgenticService initialized")
+else:
+    print(f"RAG_MODE=legacy: RAGService initialized (default)")
 
 # --------------------------------------------------------------------------- #
 # Ingestion state                                                              #
@@ -129,10 +150,16 @@ async def ingest_status() -> dict:
 async def ask(q: AskRequest) -> dict:
     start = time.perf_counter()
 
-    answer, sources, contexts = await _rag_service.answer(
-        question=q.question,
-        category=q.category,
-    )
+    if _agentic_service:
+        answer, sources, contexts = await _agentic_service.answer(
+            question=q.question,
+            category=q.category,
+        )
+    else:
+        answer, sources, contexts = await _rag_service.answer(
+            question=q.question,
+            category=q.category,
+        )
 
     elapsed = time.perf_counter() - start
     print(f"⏱️  /ask took {elapsed:.2f}s")

@@ -11,9 +11,10 @@ import asyncio
 import logging
 from typing import Optional, TypedDict
 
-from langchain_openai import ChatOpenAI
+from langchain_core.language_models import BaseChatModel
 from langgraph.graph import END, START, StateGraph
 
+from app.ports.vector_store import VectorStorePort
 from shared import (
     Article, Citation, format_citations, parse_json,
     RELEVANCE_THRESHOLD,
@@ -34,9 +35,11 @@ class CitationCheckState(TypedDict):
 
 
 class CitationCheckerAgent:
-    def __init__(self, chroma_client, llm: Optional[ChatOpenAI] = None):
-        self.chroma   = chroma_client
-        self.llm      = llm or ChatOpenAI(model="gpt-4o", temperature=0)
+    def __init__(self, vector_store: VectorStorePort, llm: Optional[BaseChatModel] = None):
+        if llm is None:
+            raise ValueError("CitationCheckerAgent requires a chat model")
+        self.vector_store = vector_store
+        self.llm = llm
         self.workflow = self._build_workflow()
 
     def _build_workflow(self) -> StateGraph:
@@ -53,32 +56,23 @@ class CitationCheckerAgent:
     # ── gate 1 ─────────────────────────────────────────────────────────────
 
     async def verify_existence(self, state: CitationCheckState) -> dict:
-        loop     = asyncio.get_event_loop()
         verified : list[Citation] = []
         invalid  : list[str]      = []
         gate_log : list[str]      = []
 
         async def _check(a: Article):
             try:
-                res = await loop.run_in_executor(
-                    None, lambda: self.chroma.get(ids=[a.id])
-                )
-                if res["ids"]:
+                docs = await self.vector_store.get_documents_by_ids([a.id])
+                if docs:
                     return Citation(article_id=a.id, content=a.content,
                                     relevance=a.relevance_score, verified=True), None
-                logger.warning("Gate 1 FAIL — not in ChromaDB: %s", a.id)
+                logger.warning("Gate 1 FAIL — not found in vector store: %s", a.id)
                 return None, a.id
             except Exception as exc:
                 logger.error("Gate 1 ERROR %s: %s", a.id, exc)
                 return None, a.id
 
         results = await asyncio.gather(*[_check(a) for a in state.get("articles", [])])
-        for cit, inv in results:
-            (verified if cit else [None]).pop(-1) if not cit else verified.append(cit)
-            if inv:
-                invalid.append(inv)
-        # simpler rewrite:
-        verified.clear(); invalid.clear()
         for cit, inv in results:
             if cit: verified.append(cit)
             if inv: invalid.append(inv)

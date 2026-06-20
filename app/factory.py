@@ -252,3 +252,31 @@ def create_metadata_enricher(llm: LLMPort) -> MetadataEnrichmentPort:
                 f"Unknown METADATA_ENRICHER_TYPE='{config.metadata_enricher_type}'. "
                 "Supported: none, basic, llm"
             )
+
+# --------------------------------------------------------------------------- #
+# Agentic RAG (LangGraph agents)                                              #
+# --------------------------------------------------------------------------- #
+
+def create_legal_research_agent(retriever: RetrieverPort, llm: LLMPort):
+    from app.agents.legal_research_agent import LegalResearchAgent
+    return LegalResearchAgent(retriever, llm.get_chat_model())
+
+
+def create_citation_checker_agent(vector_store: VectorStorePort, llm: LLMPort):
+    from app.agents.citation_checker_agent import CitationCheckerAgent
+    return CitationCheckerAgent(vector_store, llm.get_chat_model())
+
+
+def create_response_synthesizer_agent(llm: LLMPort):
+    from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
+    return ResponseSynthesizerAgent(llm.get_chat_model())
+
+
+def create_agentic_service(
+    vector_store: VectorStorePort,
+    llm: LLMPort,
+    retriever: RetrieverPort,
+    query_transformer: QueryTransformerPort,
+):
+    from app.core.agentic_service import AgenticService
+    return AgenticService(vector_store, llm, retriever, query_transformer)
