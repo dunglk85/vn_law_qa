@@ -8,6 +8,7 @@ retry_count is incremented inside execute_citation_check (a node) so
 LangGraph persists it. Routers are pure functions — never mutate state.
 """
 import logging
+import time
 from typing import Annotated, Optional, TypedDict, Any
 
 from langchain_core.language_models import BaseChatModel
@@ -39,6 +40,7 @@ class SupervisorState(TypedDict):
     error:              Optional[str]
     retry_count:        int
     metadata:           dict[str, Any]
+    reasoning_steps:    list[dict]
 
 
 class SupervisorAgent:
@@ -58,6 +60,18 @@ class SupervisorAgent:
         self.llm             = llm
         self.knowledge_search_tool = knowledge_search_tool
         self.workflow        = self._build_workflow()
+
+    def _step(self, agent: str, action: str, **kwargs) -> dict:
+        return {
+            "agent": agent,
+            "action": action,
+            "status": kwargs.get("status", "completed"),
+            "input": kwargs.get("input", ""),
+            "output": kwargs.get("output", ""),
+            "tool_calls": kwargs.get("tool_calls", []),
+            "error": kwargs.get("error", ""),
+            "timestamp": time.time(),
+        }
 
     # ── graph ──────────────────────────────────────────────────────────────
 
@@ -102,34 +116,73 @@ class SupervisorAgent:
         try:
             r        = await llm_ainvoke(self.llm, prompt)
             analysis = parse_json(r.content, "analyze_query")
+            step = self._step("supervisor", "analyze_query",
+                input=state["query"][:200],
+                output=str(analysis),
+            )
         except Exception as exc:
             logger.error("analyze_query failed: %s", exc)
             analysis = {}
-        return {"legal_domain": analysis.get("legal_domain"),
-                "metadata": {**state.get("metadata", {}), "analysis": analysis}}
+            step = self._step("supervisor", "analyze_query",
+                input=state["query"][:200],
+                status="failed",
+                error=str(exc),
+            )
+        return {
+            "legal_domain": analysis.get("legal_domain"),
+            "metadata": {**state.get("metadata", {}), "analysis": analysis},
+            "reasoning_steps": [*state.get("reasoning_steps", []), step],
+        }
 
     async def plan_tasks(self, state: SupervisorState) -> dict:
         domain = state.get("legal_domain") or "general"
-        return {"task_plan": [
+        tasks = [
             Task(task_type="legal_research",
                  description=f"Research {domain} for: {state['query']}"),
             Task(task_type="citation_check",   description="Verify citations"),
             Task(task_type="response_synthesis", description="Synthesise response"),
-        ]}
+        ]
+        step = self._step("supervisor", "plan_tasks",
+            input=f"domain={domain}",
+            output=f"tasks={[t.task_type for t in tasks]}",
+        )
+        return {
+            "task_plan": tasks,
+            "reasoning_steps": [*state.get("reasoning_steps", []), step],
+        }
 
     async def execute_legal_research(self, state: SupervisorState) -> dict:
+        steps = list(state.get("reasoning_steps", []))
         try:
             articles = await self.research_agent.run(state["query"])
             logger.info("research: %d articles (retry=%d)",
                         len(articles), state.get("retry_count", 0))
 
+            tool_calls: list[dict] = []
             tool_results = []
             if self.knowledge_search_tool is not None:
                 try:
                     tool_results = await self.knowledge_search_tool.ainvoke({"query": state["query"]})
                     logger.info("knowledge_search_tool: %d results", len(tool_results))
+                    tool_calls.append({
+                        "tool": "knowledge_search",
+                        "input": state["query"][:200],
+                        "result_count": len(tool_results),
+                    })
                 except Exception as exc:
                     logger.warning("knowledge_search_tool failed: %s", exc)
+                    tool_calls.append({
+                        "tool": "knowledge_search",
+                        "input": state["query"][:200],
+                        "error": str(exc),
+                    })
+
+            step = self._step("supervisor", "legal_research",
+                input=state["query"][:200],
+                output=f"articles={len(articles)}, tool_results={len(tool_results)}",
+                tool_calls=tool_calls,
+            )
+            steps.append(step)
 
             return {
                 "research_results": articles,
@@ -140,35 +193,67 @@ class SupervisorAgent:
                     "tool_invoked": self.knowledge_search_tool is not None,
                     "tool_result_count": len(tool_results),
                 },
+                "reasoning_steps": steps,
             }
         except Exception as exc:
             logger.error("LegalResearchAgent failed: %s", exc)
-            return {"error": str(exc), "research_results": []}
+            step = self._step("supervisor", "legal_research",
+                input=state["query"][:200],
+                status="failed",
+                error=str(exc),
+            )
+            steps.append(step)
+            return {"error": str(exc), "research_results": [], "reasoning_steps": steps}
 
     async def execute_citation_check(self, state: SupervisorState) -> dict:
+        steps = list(state.get("reasoning_steps", []))
         try:
             citations = await self.citation_agent.run(
                 state.get("research_results", []), state["query"])
             logger.info("citation check: %d verified", len(citations))
-            # Increment retry_count HERE (inside a node) so LangGraph persists it.
             new_retry = state.get("retry_count", 0) + (0 if citations else 1)
-            return {"verified_citations": citations, "retry_count": new_retry, "error": None}
+
+            step = self._step("supervisor", "citation_check",
+                input=f"articles={len(state.get('research_results',[]))}",
+                output=f"citations={len(citations)}",
+            )
+            steps.append(step)
+
+            return {"verified_citations": citations, "retry_count": new_retry, "error": None,
+                    "reasoning_steps": steps}
         except Exception as exc:
             logger.error("CitationCheckerAgent failed: %s", exc)
+            step = self._step("supervisor", "citation_check",
+                status="failed",
+                error=str(exc),
+            )
+            steps.append(step)
             return {"error": str(exc), "verified_citations": [],
-                    "retry_count": state.get("retry_count", 0) + 1}
+                    "retry_count": state.get("retry_count", 0) + 1,
+                    "reasoning_steps": steps}
 
     async def execute_response_synthesis(self, state: SupervisorState) -> dict:
         new_retry = state.get("retry_count", 0) + 1
+        steps = list(state.get("reasoning_steps", []))
         try:
             result = await self.synthesis_agent.synthesize(
                 state["query"], state.get("verified_citations", []))
+            step = self._step("supervisor", "response_synthesis",
+                input=f"citations={len(state.get('verified_citations',[]))}",
+                output=f"response_length={len(result['response'])}",
+            )
+            steps.append(step)
             return {"final_response": result["response"], "error": None,
-                    "retry_count": new_retry}
+                    "retry_count": new_retry, "reasoning_steps": steps}
         except Exception as exc:
             logger.error("ResponseSynthesizerAgent failed: %s", exc)
+            step = self._step("supervisor", "response_synthesis",
+                status="failed",
+                error=str(exc),
+            )
+            steps.append(step)
             return {"error": str(exc), "final_response": None,
-                    "retry_count": new_retry}
+                    "retry_count": new_retry, "reasoning_steps": steps}
 
     async def validate_quality(self, state: SupervisorState) -> dict:
         response  = state.get("final_response") or ""
@@ -179,7 +264,15 @@ class SupervisorAgent:
         if any(c.article_id in response for c in citations):  score += 0.2
         if len(response) > 100:                               score += 0.1
         logger.info("quality: %.2f", score)
-        return {"quality_score": round(score, 2)}
+
+        step = self._step("supervisor", "validate_quality",
+            input=f"score={round(score,2)}",
+            output=f"quality_score={round(score,2)}",
+        )
+        return {
+            "quality_score": round(score, 2),
+            "reasoning_steps": [*state.get("reasoning_steps", []), step],
+        }
 
     # ── routers ────────────────────────────────────────────────────────────
 
@@ -236,4 +329,5 @@ class SupervisorAgent:
             "verified_citations": [], "final_response": None,
             "quality_score": None, "error": None, "retry_count": 0,
             "metadata": metadata or {},
+            "reasoning_steps": [],
         })

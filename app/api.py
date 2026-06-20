@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Header, Request
@@ -211,7 +213,7 @@ async def ask(
     try:
         async with asyncio.timeout(config.ask_timeout):
             if _agentic_service:
-                answer, sources, contexts = await _agentic_service.answer(
+                answer, sources, contexts, reasoning_steps = await _agentic_service.answer(
                     question=q.question,
                     category=q.category,
                     tenant_id=tenant_id,
@@ -223,6 +225,7 @@ async def ask(
                     category=q.category,
                     tenant_id=tenant_id,
                 )
+                reasoning_steps = []
     except TimeoutError:
         logger.error("/ask timed out after %.0fs", config.ask_timeout)
         return JSONResponse(
@@ -233,8 +236,21 @@ async def ask(
     elapsed = time.perf_counter() - start
     logger.info("/ask completed in %.2fs client=%s", elapsed, client_ip)
 
-    return {
+    response: dict = {
         "answer": answer,
         "sources": sources,
         "contexts": contexts,
     }
+
+    if reasoning_steps:
+        trace_json = json.dumps(reasoning_steps, default=str)
+        if len(trace_json) > 102400:
+            trace_id = str(uuid.uuid4())
+            logger.info("Reasoning trace truncated, full trace_id=%s", trace_id)
+            response["reasoning_trace"] = reasoning_steps[:3]
+            response["reasoning_trace_truncated"] = True
+            response["trace_id"] = trace_id
+        else:
+            response["reasoning_trace"] = reasoning_steps
+
+    return response

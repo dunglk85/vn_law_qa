@@ -145,7 +145,7 @@ class AgenticService:
         tenant_id: str | None = None,
         user_id: str = "anonymous",
         session_id: str = "default-session",
-    ) -> tuple[str, list[str], list[str]]:
+    ) -> tuple[str, list[str], list[str], list[dict]]:
         await self._ensure_warmup()
 
         session_data = await self._load_session(session_id)
@@ -179,18 +179,19 @@ class AgenticService:
             )
         except TimeoutError:
             logger.error("Supervisor timed out after %.0fs", config.agent_timeout)
-            return _NO_CONTEXT_ANSWER, [], []
+            return _NO_CONTEXT_ANSWER, [], [], []
 
         answer = result.get("final_response") or _NO_CONTEXT_ANSWER
         citations = result.get("verified_citations") or []
         sources = sorted({c.article_id for c in citations})
         contexts = [c.content for c in citations]
+        reasoning_steps = result.get("reasoning_steps", [])
 
         history.append({"role": "user", "content": question, "timestamp": time.time()})
         history.append({"role": "assistant", "content": answer, "timestamp": time.time()})
         await self._save_session(session_id, {"history": history, "summary": summary})
 
-        return answer, sources, contexts
+        return answer, sources, contexts, reasoning_steps
 
 
 def create_agentic_service(
