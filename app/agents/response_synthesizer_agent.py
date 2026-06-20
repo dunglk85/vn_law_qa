@@ -1,5 +1,6 @@
 """ResponseSynthesizerAgent — generates grounded Vietnamese legal responses."""
 import logging
+from dataclasses import asdict
 from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
@@ -34,7 +35,7 @@ class ResponseSynthesizerAgent:
             response = await llm_ainvoke(self.llm, prompt)
             return {
                 "response": response.content,
-                "citations": [c.model_dump() for c in citations],
+                "citations": [asdict(c) for c in citations],
                 "metadata": {
                     "citation_count": len(citations),
                     "response_length": len(response.content),

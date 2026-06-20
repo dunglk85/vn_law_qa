@@ -4,7 +4,7 @@ FROM python:3.11-slim AS base
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    NLTK_DATA=/root/nltk_data
+    NLTK_DATA=/app/nltk_data
 
 # System deps (curl for healthchecks/logs; build deps minimal since we use psycopg binary)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,10 +22,16 @@ RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); 
 
 # Copy project files
 COPY app/ /app/app/
+COPY shared.py /app/shared.py
 COPY data/ /app/data/
+
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser \
+    && chown -R appuser:appuser /app
+USER appuser
 
 # Expose FastAPI port
 EXPOSE 8000
 
-# Default command: serve API
-CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Default command: serve API (no --reload in production)
+CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]

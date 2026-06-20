@@ -120,6 +120,24 @@ class AppConfig:
     ivfflat_lists: int = _int_env("IVFFLAT_LISTS", 100)
     ivfflat_probes: int = _int_env("IVFFLAT_PROBES", 10)
 
+    # ------------------------------------------------------------------
+    # Agent / Agentic RAG parameters
+    # ------------------------------------------------------------------
+    llm_timeout: float = _float_env("LLM_TIMEOUT", 30.0)
+    agent_timeout: float = _float_env("AGENT_TIMEOUT", 90.0)
+    ask_timeout: float = _float_env("ASK_TIMEOUT", 120.0)
+    rate_limit_max: int = _int_env("RATE_LIMIT_MAX", 30)
+    rate_limit_window: float = _float_env("RATE_LIMIT_WINDOW", 60.0)
+
+    max_retries: int = _int_env("MAX_RETRIES", 2)
+    quality_threshold: float = _float_env("QUALITY_THRESHOLD", 0.75)
+    n_results_per_vector: int = _int_env("N_RESULTS_PER_VECTOR", 5)
+    top_k_research: int = _int_env("TOP_K_RESEARCH", 5)
+    top_k_llm_score: int = _int_env("TOP_K_LLM_SCORE", 8)
+    hyde_enabled: bool = os.getenv("HYDE_ENABLED", "true").lower() == "true"
+    subquery_count: int = _int_env("SUBQUERY_COUNT", 3)
+    relevance_threshold: float = _float_env("RELEVANCE_THRESHOLD", 0.5)
+
 
 # Singleton — import this everywhere instead of reading os.getenv directly
 config = AppConfig()

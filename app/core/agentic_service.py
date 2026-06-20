@@ -13,15 +13,10 @@ from app.ports.llm import LLMPort
 from app.ports.query_transformer import QueryTransformerPort
 from app.ports.retriever import RetrieverPort
 from app.ports.vector_store import VectorStorePort
-from app.agents.legal_research_agent import LegalResearchAgent
-from app.agents.citation_checker_agent import CitationCheckerAgent
-from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
-from app.agents.supervisor_agent import SupervisorAgent
 
 logger = logging.getLogger(__name__)
 
 _NO_CONTEXT_ANSWER = "I don't know. No relevant context was found to answer your question."
-_AGENT_TIMEOUT = 90.0
 
 
 class AgenticService:
@@ -33,19 +28,28 @@ class AgenticService:
         llm: LLMPort,
         retriever: RetrieverPort,
         query_transformer: QueryTransformerPort,
+        supervisor=None,
     ) -> None:
         self._vector_store = vector_store
         self._llm = llm
         self._retriever = retriever
         self._query_transformer = query_transformer
-        chat_model = llm.get_chat_model()
 
-        self._supervisor = SupervisorAgent(
-            research_agent=LegalResearchAgent(self._retriever, chat_model),
-            citation_agent=CitationCheckerAgent(self._vector_store, chat_model),
-            synthesis_agent=ResponseSynthesizerAgent(chat_model),
-            llm=chat_model,
-        )
+        if supervisor is not None:
+            self._supervisor = supervisor
+        else:
+            from app.agents.legal_research_agent import LegalResearchAgent
+            from app.agents.citation_checker_agent import CitationCheckerAgent
+            from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
+            from app.agents.supervisor_agent import SupervisorAgent
+
+            chat_model = llm.get_chat_model()
+            self._supervisor = SupervisorAgent(
+                research_agent=LegalResearchAgent(self._retriever, chat_model),
+                citation_agent=CitationCheckerAgent(self._vector_store, chat_model),
+                synthesis_agent=ResponseSynthesizerAgent(chat_model),
+                llm=chat_model,
+            )
         self._warmed_up = False
 
     async def _ensure_warmup(self) -> None:
@@ -76,10 +80,10 @@ class AgenticService:
                     session_id=session_id,
                     metadata={"category": category} if category else {},
                 ),
-                timeout=_AGENT_TIMEOUT,
+                timeout=config.agent_timeout,
             )
         except asyncio.TimeoutError:
-            logger.error("Supervisor timed out after %.0fs", _AGENT_TIMEOUT)
+            logger.error("Supervisor timed out after %.0fs", config.agent_timeout)
             return _NO_CONTEXT_ANSWER, [], []
 
         answer = result.get("final_response") or _NO_CONTEXT_ANSWER

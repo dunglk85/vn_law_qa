@@ -2,30 +2,29 @@
 from __future__ import annotations
 import asyncio
 import logging
+import os
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Header, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from typing import Optional
 
 from app.config import config
-from app.core.agentic_service import create_agentic_service
 from app.factory import (
     create_cache, create_chunker, create_embeddings, create_llm,
     create_metadata_enricher, create_query_transformer, create_reranker,
-    create_retriever, create_vector_store,
+    create_retriever, create_vector_store, create_agentic_service,
 )
 from app.core.ingest_service import run_ingest
 from app.core.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
 
-_ASK_TIMEOUT = 120.0
-_RATE_LIMIT_MAX = 30
-_RATE_LIMIT_WINDOW = 60.0
 _rate_limit_store: dict[str, list[float]] = {}
+_INGEST_API_KEY = os.getenv("INGEST_API_KEY", "")
 
 # --------------------------------------------------------------------------- #
 # App bootstrap                                                                #
@@ -138,7 +137,12 @@ async def health() -> dict:
 
 
 @app.post("/ingest", response_model=None)
-async def kick_off_ingest():
+async def kick_off_ingest(x_api_key: Optional[str] = Header(None)):
+    if _INGEST_API_KEY and x_api_key != _INGEST_API_KEY:
+        return JSONResponse(
+            {"ok": False, "message": "Invalid or missing API key"},
+            status_code=401,
+        )
     global _ingest_task
     async with _ingest_lock:
         if _ingest_task and not _ingest_task.done():
@@ -165,7 +169,7 @@ def _get_client_ip(request: Request) -> str:
 
 def _check_rate_limit(client_ip: str) -> bool:
     now = time.time()
-    window_start = now - _RATE_LIMIT_WINDOW
+    window_start = now - config.rate_limit_window
     if client_ip not in _rate_limit_store:
         _rate_limit_store[client_ip] = []
     _rate_limit_store[client_ip] = [t for t in _rate_limit_store[client_ip] if t > window_start]
@@ -177,7 +181,7 @@ def _check_rate_limit(client_ip: str) -> bool:
             del _rate_limit_store[ip]
         if client_ip not in _rate_limit_store:
             _rate_limit_store[client_ip] = []
-    if len(_rate_limit_store[client_ip]) >= _RATE_LIMIT_MAX:
+    if len(_rate_limit_store[client_ip]) >= config.rate_limit_max:
         return False
     _rate_limit_store[client_ip].append(now)
     return True
@@ -196,7 +200,7 @@ async def ask(q: AskRequest, request: Request) -> dict:
     logger.info("POST /ask question=%.80s client=%s", q.question, client_ip)
 
     try:
-        async with asyncio.timeout(_ASK_TIMEOUT):
+        async with asyncio.timeout(config.ask_timeout):
             if _agentic_service:
                 answer, sources, contexts = await _agentic_service.answer(
                     question=q.question,
@@ -208,7 +212,7 @@ async def ask(q: AskRequest, request: Request) -> dict:
                     category=q.category,
                 )
     except asyncio.TimeoutError:
-        logger.error("/ask timed out after %.0fs", _ASK_TIMEOUT)
+        logger.error("/ask timed out after %.0fs", config.ask_timeout)
         return JSONResponse(
             {"ok": False, "message": "Request timed out. Please try again."},
             status_code=504,

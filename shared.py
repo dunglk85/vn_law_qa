@@ -2,15 +2,17 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import Any
+
+from app.config import config
 
 logger = logging.getLogger(__name__)
 
-_LLM_TIMEOUT = 30.0
 
-
-async def llm_ainvoke(llm, prompt: str, timeout: float = _LLM_TIMEOUT):
+async def llm_ainvoke(llm, prompt: str, timeout: float | None = None):
+    if timeout is None:
+        timeout = config.llm_timeout
     return await asyncio.wait_for(llm.ainvoke(prompt), timeout=timeout)
 
 
@@ -21,6 +23,9 @@ class Article:
     metadata: dict[str, Any]
     relevance_score: float = 0.0
 
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
 
 @dataclass(frozen=True)
 class Citation:
@@ -29,6 +34,9 @@ class Citation:
     relevance: float = 0.0
     verified: bool = False
 
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
 
 @dataclass(frozen=True)
 class Task:
@@ -36,14 +44,16 @@ class Task:
     description: str
 
 
-MAX_RETRIES = 2
-QUALITY_THRESHOLD = 0.75
-N_RESULTS_PER_VECTOR = 5
-TOP_K_RESEARCH = 5
-TOP_K_LLM_SCORE = 8
-HYDE_ENABLED = True
-SUBQUERY_COUNT = 3
-RELEVANCE_THRESHOLD = 0.5
+# Re-export from AppConfig for backward compatibility.
+# New code should import from app.config directly.
+MAX_RETRIES = config.max_retries
+QUALITY_THRESHOLD = config.quality_threshold
+N_RESULTS_PER_VECTOR = config.n_results_per_vector
+TOP_K_RESEARCH = config.top_k_research
+TOP_K_LLM_SCORE = config.top_k_llm_score
+HYDE_ENABLED = config.hyde_enabled
+SUBQUERY_COUNT = config.subquery_count
+RELEVANCE_THRESHOLD = config.relevance_threshold
 
 
 def parse_json(content: str, context: str) -> dict[str, Any]:

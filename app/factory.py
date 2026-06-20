@@ -252,3 +252,59 @@ def create_metadata_enricher(llm: LLMPort) -> MetadataEnrichmentPort:
                 f"Unknown METADATA_ENRICHER_TYPE='{config.metadata_enricher_type}'. "
                 "Supported: none, basic, llm"
             )
+
+
+# --------------------------------------------------------------------------- #
+# Agents (LangGraph-based)                                                     #
+# --------------------------------------------------------------------------- #
+
+def create_legal_research_agent(retriever: RetrieverPort, llm: LLMPort):
+    from app.agents.legal_research_agent import LegalResearchAgent
+    return LegalResearchAgent(retriever, llm.get_chat_model())
+
+
+def create_citation_checker_agent(vector_store: VectorStorePort, llm: LLMPort):
+    from app.agents.citation_checker_agent import CitationCheckerAgent
+    return CitationCheckerAgent(vector_store, llm.get_chat_model())
+
+
+def create_response_synthesizer_agent(llm: LLMPort):
+    from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
+    return ResponseSynthesizerAgent(llm.get_chat_model())
+
+
+def create_supervisor_agent(
+    research_agent,
+    citation_agent,
+    synthesis_agent,
+    llm: LLMPort,
+):
+    from app.agents.supervisor_agent import SupervisorAgent
+    return SupervisorAgent(
+        research_agent=research_agent,
+        citation_agent=citation_agent,
+        synthesis_agent=synthesis_agent,
+        llm=llm.get_chat_model(),
+    )
+
+
+def create_agentic_service(
+    vector_store: VectorStorePort,
+    llm: LLMPort,
+    retriever: RetrieverPort,
+    query_transformer: QueryTransformerPort,
+):
+    from app.agents.legal_research_agent import LegalResearchAgent
+    from app.agents.citation_checker_agent import CitationCheckerAgent
+    from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
+    from app.agents.supervisor_agent import SupervisorAgent
+    from app.core.agentic_service import AgenticService
+
+    chat_model = llm.get_chat_model()
+    supervisor = SupervisorAgent(
+        research_agent=LegalResearchAgent(retriever, chat_model),
+        citation_agent=CitationCheckerAgent(vector_store, chat_model),
+        synthesis_agent=ResponseSynthesizerAgent(chat_model),
+        llm=chat_model,
+    )
+    return AgenticService(vector_store, llm, retriever, query_transformer, supervisor=supervisor)
