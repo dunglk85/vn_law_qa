@@ -5,22 +5,20 @@ This module knows NOTHING about PGVector, OpenAI, Cohere, or Redis.
 It depends only on Port interfaces injected at construction time.
 """
 from __future__ import annotations
-from typing import List, Optional, Tuple
 
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.documents import Document
-from langchain_core.retrievers import BaseRetriever
 from langchain.retrievers import ContextualCompressionRetriever
+from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.retrievers import BaseRetriever
 
 from app.config import config
-from app.ports.vector_store import VectorStorePort
 from app.ports.llm import LLMPort
+from app.ports.query_transformer import QueryTransformerPort
 from app.ports.reranker import RerankerPort
 from app.ports.retriever import RetrieverPort
-from app.ports.query_transformer import QueryTransformerPort
-
+from app.ports.vector_store import VectorStorePort
 
 _SYSTEM = """You are a grounded company knowledge assistant.
 Always base answers strictly on the provided context.
@@ -71,10 +69,15 @@ class RAGService:
                 pass
             self._warmed_up = True
 
-    def _build_retriever(self, category: Optional[str]) -> BaseRetriever:
+    def _build_retriever(self, category: str | None = None, tenant_id: str | None = None) -> BaseRetriever:
         search_kwargs: dict = {"k": config.retrieval_k}
+        filter_dict: dict = {}
         if category:
-            search_kwargs["filter"] = {"category": category}
+            filter_dict["category"] = category
+        if tenant_id and tenant_id != "*":
+            filter_dict["tenant_id"] = tenant_id
+        if filter_dict:
+            search_kwargs["filter"] = filter_dict
 
         base_retriever = self._retriever.get_retriever(search_kwargs=search_kwargs)
 
@@ -89,10 +92,10 @@ class RAGService:
     async def _retrieve_with_transformed_queries(
         self,
         retriever: BaseRetriever,
-        queries: List[str],
-    ) -> List[Document]:
+        queries: list[str],
+    ) -> list[Document]:
         """Retrieve documents for multiple queries and deduplicate."""
-        all_docs: List[Document] = []
+        all_docs: list[Document] = []
         seen_content: set[int] = set()
 
         for query in queries:
@@ -108,13 +111,15 @@ class RAGService:
     async def answer(
         self,
         question: str,
-        category: Optional[str] = None,
-    ) -> Tuple[str, List[str], List[str]]:
+        category: str | None = None,
+        tenant_id: str | None = None,
+    ) -> tuple[str, list[str], list[str]]:
         """Run the full RAG pipeline and return (answer, sources, contexts).
 
         Args:
             question: User's natural-language question.
             category: Optional metadata filter (e.g. 'guides', 'policies').
+            tenant_id: Optional tenant filter for data isolation.
 
         Returns:
             answer    — LLM-generated answer string
@@ -127,7 +132,7 @@ class RAGService:
         if not transformed_queries:
             transformed_queries = [question]
 
-        retriever = self._build_retriever(category)
+        retriever = self._build_retriever(category=category, tenant_id=tenant_id)
 
         if len(transformed_queries) > 1:
             docs = await self._retrieve_with_transformed_queries(retriever, transformed_queries)

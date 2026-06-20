@@ -4,9 +4,9 @@ This module wires the supervisor workflow and generic adapters together
 without depending on any concrete backend implementation.
 """
 from __future__ import annotations
+
 import asyncio
 import logging
-from typing import List, Optional, Tuple
 
 from app.config import config
 from app.ports.llm import LLMPort
@@ -38,8 +38,8 @@ class AgenticService:
         if supervisor is not None:
             self._supervisor = supervisor
         else:
-            from app.agents.legal_research_agent import LegalResearchAgent
             from app.agents.citation_checker_agent import CitationCheckerAgent
+            from app.agents.legal_research_agent import LegalResearchAgent
             from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
             from app.agents.supervisor_agent import SupervisorAgent
 
@@ -63,14 +63,21 @@ class AgenticService:
     async def answer(
         self,
         question: str,
-        category: Optional[str] = None,
+        category: str | None = None,
+        tenant_id: str | None = None,
         user_id: str = "anonymous",
         session_id: str = "default-session",
-    ) -> Tuple[str, List[str], List[str]]:
+    ) -> tuple[str, list[str], list[str]]:
         await self._ensure_warmup()
 
         transformed_queries = await self._query_transformer.transform(question)
         question_for_agents = transformed_queries[0] if transformed_queries else question
+
+        metadata: dict = {}
+        if category:
+            metadata["category"] = category
+        if tenant_id and tenant_id != "*":
+            metadata["tenant_id"] = tenant_id
 
         try:
             result = await asyncio.wait_for(
@@ -78,11 +85,11 @@ class AgenticService:
                     question_for_agents,
                     user_id=user_id,
                     session_id=session_id,
-                    metadata={"category": category} if category else {},
+                    metadata=metadata,
                 ),
                 timeout=config.agent_timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("Supervisor timed out after %.0fs", config.agent_timeout)
             return _NO_CONTEXT_ANSWER, [], []
 

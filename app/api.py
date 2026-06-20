@@ -1,5 +1,6 @@
 # app/api.py
 from __future__ import annotations
+
 import asyncio
 import logging
 import os
@@ -10,7 +11,6 @@ from fastapi import FastAPI, Header, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from typing import Optional
 
 from app.auth.dependencies import require_role
 from app.auth.router import router as auth_router
@@ -19,9 +19,16 @@ from app.core.agentic_service import create_agentic_service
 from app.core.ingest_service import run_ingest
 from app.core.rag_service import RAGService
 from app.factory import (
-    create_cache, create_chunker, create_embeddings, create_llm,
-    create_metadata_enricher, create_query_transformer, create_rate_limiter,
-    create_reranker, create_retriever, create_vector_store,
+    create_cache,
+    create_chunker,
+    create_embeddings,
+    create_llm,
+    create_metadata_enricher,
+    create_query_transformer,
+    create_rate_limiter,
+    create_reranker,
+    create_retriever,
+    create_vector_store,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,9 +92,9 @@ if config.rag_mode.lower() == "agentic":
         retriever=_retriever,
         query_transformer=_query_transformer,
     )
-    print(f"RAG_MODE=agentic: AgenticService initialized")
+    print("RAG_MODE=agentic: AgenticService initialized")
 else:
-    print(f"RAG_MODE=legacy: RAGService initialized (default)")
+    print("RAG_MODE=legacy: RAGService initialized (default)")
 
 # --------------------------------------------------------------------------- #
 # Ingestion state                                                              #
@@ -145,7 +152,7 @@ async def health() -> dict:
 @app.post("/ingest", response_model=None)
 async def kick_off_ingest(
     _user: dict = Depends(require_role("admin")),
-    x_api_key: Optional[str] = Header(None),
+    x_api_key: str | None = Header(None),
 ):
     if _INGEST_API_KEY and x_api_key != _INGEST_API_KEY:
         return JSONResponse(
@@ -192,19 +199,23 @@ async def ask(
     start = time.perf_counter()
     logger.info("POST /ask question=%.80s client=%s", q.question, client_ip)
 
+    tenant_id = _user.get("tenant_id") if isinstance(_user, dict) else None
+
     try:
         async with asyncio.timeout(config.ask_timeout):
             if _agentic_service:
                 answer, sources, contexts = await _agentic_service.answer(
                     question=q.question,
                     category=q.category,
+                    tenant_id=tenant_id,
                 )
             else:
                 answer, sources, contexts = await _rag_service.answer(
                     question=q.question,
                     category=q.category,
+                    tenant_id=tenant_id,
                 )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.error("/ask timed out after %.0fs", config.ask_timeout)
         return JSONResponse(
             {"ok": False, "message": "Request timed out. Please try again."},
