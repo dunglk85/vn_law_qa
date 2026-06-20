@@ -288,23 +288,24 @@ def create_supervisor_agent(
     )
 
 
-def create_agentic_service(
-    vector_store: VectorStorePort,
-    llm: LLMPort,
-    retriever: RetrieverPort,
-    query_transformer: QueryTransformerPort,
-):
-    from app.agents.legal_research_agent import LegalResearchAgent
-    from app.agents.citation_checker_agent import CitationCheckerAgent
-    from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
-    from app.agents.supervisor_agent import SupervisorAgent
-    from app.core.agentic_service import AgenticService
+def create_rate_limiter():
+    from app.adapters.rate_limiters.memory_rate_limiter import MemoryRateLimiter
+    from app.adapters.rate_limiters.redis_rate_limiter import RedisRateLimiter
 
-    chat_model = llm.get_chat_model()
-    supervisor = SupervisorAgent(
-        research_agent=LegalResearchAgent(retriever, chat_model),
-        citation_agent=CitationCheckerAgent(vector_store, chat_model),
-        synthesis_agent=ResponseSynthesizerAgent(chat_model),
-        llm=chat_model,
+    if config.redis_url:
+        try:
+            limiter = RedisRateLimiter(
+                max_requests=config.rate_limit_max,
+                window_seconds=config.rate_limit_window,
+                redis_url=config.redis_url,
+            )
+            logger.info("Rate limiter: Redis-backed (multi-instance ready)")
+            return limiter
+        except Exception:
+            logger.warning("Redis connection failed for rate limiter, falling back to in-memory")
+
+    logger.warning("No REDIS_URL configured, rate limiter falling back to in-memory (single-instance only)")
+    return MemoryRateLimiter(
+        max_requests=config.rate_limit_max,
+        window_seconds=config.rate_limit_window,
     )
-    return AgenticService(vector_store, llm, retriever, query_transformer, supervisor=supervisor)

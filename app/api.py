@@ -13,17 +13,17 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from app.config import config
-from app.factory import (
-    create_cache, create_chunker, create_embeddings, create_llm,
-    create_metadata_enricher, create_query_transformer, create_reranker,
-    create_retriever, create_vector_store, create_agentic_service,
-)
+from app.core.agentic_service import create_agentic_service
 from app.core.ingest_service import run_ingest
 from app.core.rag_service import RAGService
+from app.factory import (
+    create_cache, create_chunker, create_embeddings, create_llm,
+    create_metadata_enricher, create_query_transformer, create_rate_limiter,
+    create_reranker, create_retriever, create_vector_store,
+)
 
 logger = logging.getLogger(__name__)
 
-_rate_limit_store: dict[str, list[float]] = {}
 _INGEST_API_KEY = os.getenv("INGEST_API_KEY", "")
 
 # --------------------------------------------------------------------------- #
@@ -57,6 +57,9 @@ try:
     _cache.apply()
 except Exception as e:
     print(f"CACHE: Failed to activate cache ({e}). Running without cache.")
+
+# Rate limiter (Redis-backed with in-memory fallback)
+_rate_limiter = create_rate_limiter()
 
 # RAGService: business logic with injected dependencies
 _rag_service = RAGService(
@@ -167,30 +170,10 @@ def _get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _check_rate_limit(client_ip: str) -> bool:
-    now = time.time()
-    window_start = now - config.rate_limit_window
-    if client_ip not in _rate_limit_store:
-        _rate_limit_store[client_ip] = []
-    _rate_limit_store[client_ip] = [t for t in _rate_limit_store[client_ip] if t > window_start]
-    # Prune stale IP keys periodically (when window is empty after filter)
-    if not _rate_limit_store[client_ip]:
-        stale_ips = [ip for ip, times in _rate_limit_store.items()
-                     if not times or times[-1] <= window_start]
-        for ip in stale_ips:
-            del _rate_limit_store[ip]
-        if client_ip not in _rate_limit_store:
-            _rate_limit_store[client_ip] = []
-    if len(_rate_limit_store[client_ip]) >= config.rate_limit_max:
-        return False
-    _rate_limit_store[client_ip].append(now)
-    return True
-
-
 @app.post("/ask")
 async def ask(q: AskRequest, request: Request) -> dict:
     client_ip = _get_client_ip(request)
-    if not _check_rate_limit(client_ip):
+    if not await _rate_limiter.check(client_ip):
         return JSONResponse(
             {"ok": False, "message": "Rate limit exceeded. Try again later."},
             status_code=429,
