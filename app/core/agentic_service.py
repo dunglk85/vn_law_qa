@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from app.config import config
 from app.ports.llm import LLMPort
 from app.ports.query_transformer import QueryTransformerPort
 from app.ports.retriever import RetrieverPort
+from app.ports.session_store import SessionStorePort
 from app.ports.vector_store import VectorStorePort
 
 logger = logging.getLogger(__name__)
@@ -29,11 +31,13 @@ class AgenticService:
         retriever: RetrieverPort,
         query_transformer: QueryTransformerPort,
         supervisor=None,
+        session_store: SessionStorePort | None = None,
     ) -> None:
         self._vector_store = vector_store
         self._llm = llm
         self._retriever = retriever
         self._query_transformer = query_transformer
+        self._session_store = session_store
 
         if supervisor is not None:
             self._supervisor = supervisor
@@ -60,6 +64,23 @@ class AgenticService:
                 logger.warning("Warmup query failed (non-fatal): %s", exc)
             self._warmed_up = True
 
+    async def _load_history(self, session_id: str) -> list[dict]:
+        if self._session_store is None:
+            return []
+        try:
+            return await self._session_store.load(session_id)
+        except Exception as exc:
+            logger.warning("Session store unavailable, running stateless: %s", exc)
+            return []
+
+    async def _save_history(self, session_id: str, history: list[dict]) -> None:
+        if self._session_store is None:
+            return
+        try:
+            await self._session_store.save(session_id, history)
+        except Exception as exc:
+            logger.warning("Failed to save session history: %s", exc)
+
     async def answer(
         self,
         question: str,
@@ -69,6 +90,8 @@ class AgenticService:
         session_id: str = "default-session",
     ) -> tuple[str, list[str], list[str]]:
         await self._ensure_warmup()
+
+        conversation_history = await self._load_history(session_id)
 
         transformed_queries = await self._query_transformer.transform(question)
         question_for_agents = transformed_queries[0] if transformed_queries else question
@@ -86,6 +109,7 @@ class AgenticService:
                     user_id=user_id,
                     session_id=session_id,
                     metadata=metadata,
+                    conversation_history=conversation_history,
                 ),
                 timeout=config.agent_timeout,
             )
@@ -98,6 +122,10 @@ class AgenticService:
         sources = sorted({c.article_id for c in citations})
         contexts = [c.content for c in citations]
 
+        conversation_history.append({"role": "user", "content": question, "timestamp": time.time()})
+        conversation_history.append({"role": "assistant", "content": answer, "timestamp": time.time()})
+        await self._save_history(session_id, conversation_history)
+
         return answer, sources, contexts
 
 
@@ -106,5 +134,6 @@ def create_agentic_service(
     llm: LLMPort,
     retriever: RetrieverPort,
     query_transformer: QueryTransformerPort,
+    session_store: SessionStorePort | None = None,
 ) -> AgenticService:
-    return AgenticService(vector_store, llm, retriever, query_transformer)
+    return AgenticService(vector_store, llm, retriever, query_transformer, session_store=session_store)

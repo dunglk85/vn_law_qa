@@ -28,6 +28,7 @@ from app.factory import (
     create_rate_limiter,
     create_reranker,
     create_retriever,
+    create_session_store,
     create_vector_store,
 )
 
@@ -71,6 +72,9 @@ except Exception as e:
 # Rate limiter (Redis-backed with in-memory fallback)
 _rate_limiter = create_rate_limiter()
 
+# Session store (Redis-backed with in-memory fallback)
+_session_store = create_session_store()
+
 # RAGService: business logic with injected dependencies
 _rag_service = RAGService(
     vector_store=_vector_store,
@@ -91,6 +95,7 @@ if config.rag_mode.lower() == "agentic":
         llm=_llm,
         retriever=_retriever,
         query_transformer=_query_transformer,
+        session_store=_session_store,
     )
     print("RAG_MODE=agentic: AgenticService initialized")
 else:
@@ -133,6 +138,7 @@ async def _ingest_job() -> None:
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     category: str | None = None
+    session_id: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -200,6 +206,7 @@ async def ask(
     logger.info("POST /ask question=%.80s client=%s", q.question, client_ip)
 
     tenant_id = _user.get("tenant_id") if isinstance(_user, dict) else None
+    session_id = q.session_id or _user.get("sub", "anonymous") if isinstance(_user, dict) else "anonymous"
 
     try:
         async with asyncio.timeout(config.ask_timeout):
@@ -208,6 +215,7 @@ async def ask(
                     question=q.question,
                     category=q.category,
                     tenant_id=tenant_id,
+                    session_id=session_id,
                 )
             else:
                 answer, sources, contexts = await _rag_service.answer(

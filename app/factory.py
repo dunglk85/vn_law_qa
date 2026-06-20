@@ -22,6 +22,7 @@ from app.ports.metadata_enrichment import MetadataEnrichmentPort
 from app.ports.query_transformer import QueryTransformerPort
 from app.ports.reranker import RerankerPort
 from app.ports.retriever import RetrieverPort
+from app.ports.session_store import SessionStorePort
 from app.ports.vector_store import VectorStorePort
 
 logger = logging.getLogger(__name__)
@@ -290,6 +291,24 @@ def create_supervisor_agent(
         synthesis_agent=synthesis_agent,
         llm=llm.get_chat_model(),
     )
+
+
+def create_session_store() -> SessionStorePort:
+    if config.redis_url:
+        try:
+            from app.adapters.session_stores.redis_session_store import RedisSessionStore
+            store = RedisSessionStore(
+                redis_url=config.redis_url,
+                ttl_seconds=config.session_ttl_seconds,
+            )
+            logger.info("Session store: Redis-backed")
+            return store
+        except Exception:
+            logger.warning("Redis connection failed for session store, falling back to in-memory")
+
+    from app.adapters.session_stores.memory_session_store import MemorySessionStore
+    logger.warning("No REDIS_URL configured, session store using in-memory (single-instance only)")
+    return MemorySessionStore(ttl_seconds=config.session_ttl_seconds)
 
 
 def create_rate_limiter():

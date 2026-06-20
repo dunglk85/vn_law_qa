@@ -139,6 +139,11 @@ class AppConfig:
     relevance_threshold: float = _float_env("RELEVANCE_THRESHOLD", 0.5)
 
     # ------------------------------------------------------------------
+    # Session
+    # ------------------------------------------------------------------
+    session_ttl_seconds: int = _int_env("SESSION_TTL_SECONDS", 3600)
+
+    # ------------------------------------------------------------------
     # Auth / JWT
     # ------------------------------------------------------------------
     jwt_secret: str = _str_env("JWT_SECRET", "change-me-in-production")
