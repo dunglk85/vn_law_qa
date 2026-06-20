@@ -2,7 +2,7 @@ from __future__ import annotations
 import os
 import logging
 from dataclasses import dataclass
-from typing import Optional
+
 
 from dotenv import load_dotenv
 
@@ -137,6 +137,14 @@ class AppConfig:
     hyde_enabled: bool = os.getenv("HYDE_ENABLED", "true").lower() == "true"
     subquery_count: int = _int_env("SUBQUERY_COUNT", 3)
     relevance_threshold: float = _float_env("RELEVANCE_THRESHOLD", 0.5)
+
+    # ------------------------------------------------------------------
+    # Auth / JWT
+    # ------------------------------------------------------------------
+    jwt_secret: str = _str_env("JWT_SECRET", "change-me-in-production")
+    jwt_algorithm: str = _str_env("JWT_ALGORITHM", "HS256")
+    access_token_expire_minutes: int = _int_env("ACCESS_TOKEN_EXPIRE_MINUTES", 30)
+    refresh_token_expire_days: int = _int_env("REFRESH_TOKEN_EXPIRE_DAYS", 7)
 
 
 # Singleton — import this everywhere instead of reading os.getenv directly

@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import Optional
 
+from app.auth.router import router as auth_router
 from app.config import config
 from app.core.agentic_service import create_agentic_service
 from app.core.ingest_service import run_ingest
@@ -31,6 +32,7 @@ _INGEST_API_KEY = os.getenv("INGEST_API_KEY", "")
 # --------------------------------------------------------------------------- #
 
 app = FastAPI(title="Company Knowledge Assistant")
+app.include_router(auth_router)
 
 # Static frontend
 static_dir = Path(__file__).with_name("static")
