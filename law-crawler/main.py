@@ -20,9 +20,12 @@
 from models.models import *
 from bs4 import BeautifulSoup
 from helper import *
+import logging
 import os
 import json
 import uuid
+
+logger = logging.getLogger(__name__)
 
 # CREATE-DROP Tất cả dữ liệu
 # db.drop_tables([PDMucLienQuan ,PDTable, PDFile , PDDieu, PDChuong, PDDeMuc, PDChuDe])
@@ -40,10 +43,8 @@ try:
     with db.atomic():
         PDChuDe.bulk_create([PDChuDe(ten=chude["Text"], stt=chude["STT"], id=chude["Value"]) for chude in chudes])
     print("Inserted tất cả chủ đề pháp điển!")
-except Exception:
-    pass
-
-# Đọc Đề mục
+except Exception as exc:
+    logger.warning("Failed to insert chủ đề: %s", exc)
 print("Load Đề Mục Từ File ...")
 with open("./phap-dien/demuc.json", "r", encoding="utf-8") as demuc_file:
     demucs = json.load(demuc_file)
@@ -54,9 +55,8 @@ try:
         PDDeMuc.bulk_create(
             [PDDeMuc(ten=demuc["Text"], stt=demuc["STT"], id=demuc["Value"], chude_id=demuc["ChuDe"]) for demuc in
              demucs])
-except Exception:
-    pass
-print("Inserted tất cả đề mục pháp điển!")
+except Exception as exc:
+    logger.warning("Failed to insert đề mục: %s", exc)
 
 print("Load Tree Nodes Từ File ...")
 with open("./phap-dien/treeNode.json", "r", encoding="utf-8") as tree_nodes_file:
@@ -172,7 +172,10 @@ for file in os.listdir(demuc_directory):
                 for lienquan_html in lienquans_html:
                     if not "onclick" in lienquan_html.attrs or lienquan_html["onclick"] == "":
                         continue
-                    mapc_lienquan = extract_input(lienquan_html["onclick"]).replace("'", "")
+                    raw = extract_input(lienquan_html["onclick"])
+                    if raw is None:
+                        continue
+                    mapc_lienquan = raw.replace("'", "")
                     dieus_lienquan.append({"dieu_id1": dieu["MAPC"], "dieu_id2": mapc_lienquan})
 
             stt += 1

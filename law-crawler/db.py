@@ -24,7 +24,10 @@ from peewee import MySQLDatabase
 _DB_USER = os.getenv("LAW_DB_USER", "root")
 _DB_PASS = os.getenv("LAW_DB_PASSWORD", "123456789")
 _DB_HOST = os.getenv("LAW_DB_HOST", "localhost")
-_DB_PORT = int(os.getenv("LAW_DB_PORT", "3306"))
+try:
+    _DB_PORT = int(os.getenv("LAW_DB_PORT", "3306"))
+except (ValueError, TypeError):
+    _DB_PORT = 3306
 _DB_NAME = os.getenv("LAW_DB_NAME", "law")
 
 DATABASE = f'mysql://{_DB_USER}:{_DB_PASS}@{_DB_HOST}:{_DB_PORT}/{_DB_NAME}'

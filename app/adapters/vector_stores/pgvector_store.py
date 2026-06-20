@@ -45,7 +45,7 @@ def _create_hnsw_index_sync(connection_string: str, collection_name: str) -> Non
                 return
 
             cur.execute(
-                f"CREATE INDEX {index_name} "
+                f'CREATE INDEX "{index_name}" '
                 "ON langchain_pg_embedding USING hnsw (embedding vector_cosine_ops) "
                 "WITH (m = %s, ef_construction = %s)",
                 (config.hnsw_m, config.hnsw_ef_construction),
@@ -70,7 +70,7 @@ def _create_ivfflat_index_sync(connection_string: str, collection_name: str) -> 
                 return
 
             cur.execute(
-                f"CREATE INDEX {index_name} "
+                f'CREATE INDEX "{index_name}" '
                 "ON langchain_pg_embedding USING ivfflat (embedding vector_cosine_ops) "
                 "WITH (lists = %s)",
                 (config.ivfflat_lists,),
@@ -130,9 +130,7 @@ class PGVectorStoreAdapter(VectorStorePort):
         """Return a retriever that uses sync similarity_search via thread pool."""
         self._get_store()
         kwargs = search_kwargs or {}
-        wrapper = _SyncRetriever()
-        wrapper._store = self._store
-        wrapper._search_kwargs = kwargs
+        wrapper = _SyncRetriever.model_construct(_store=self._store, _search_kwargs=kwargs)
         return wrapper
 
     async def create_index(self) -> None:

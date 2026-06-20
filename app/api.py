@@ -154,12 +154,28 @@ async def ingest_status() -> dict:
     return {"ok": True, **_ingest_last}
 
 
+def _get_client_ip(request: Request) -> str:
+    """Extract client IP, respecting X-Forwarded-For behind trusted proxies."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 def _check_rate_limit(client_ip: str) -> bool:
     now = time.time()
     window_start = now - _RATE_LIMIT_WINDOW
     if client_ip not in _rate_limit_store:
         _rate_limit_store[client_ip] = []
     _rate_limit_store[client_ip] = [t for t in _rate_limit_store[client_ip] if t > window_start]
+    # Prune stale IP keys periodically (when window is empty after filter)
+    if not _rate_limit_store[client_ip]:
+        stale_ips = [ip for ip, times in _rate_limit_store.items()
+                     if not times or times[-1] <= window_start]
+        for ip in stale_ips:
+            del _rate_limit_store[ip]
+        if client_ip not in _rate_limit_store:
+            _rate_limit_store[client_ip] = []
     if len(_rate_limit_store[client_ip]) >= _RATE_LIMIT_MAX:
         return False
     _rate_limit_store[client_ip].append(now)
@@ -168,7 +184,7 @@ def _check_rate_limit(client_ip: str) -> bool:
 
 @app.post("/ask")
 async def ask(q: AskRequest, request: Request) -> dict:
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     if not _check_rate_limit(client_ip):
         return JSONResponse(
             {"ok": False, "message": "Rate limit exceeded. Try again later."},
