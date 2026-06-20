@@ -30,9 +30,6 @@ class TestArchitecture(unittest.TestCase):
             for file in files:
                 if file.endswith(".py"):
                     full_path = Path(root) / file
-                    # Skip eval_ragas.py as it is an evaluation script, not part of production app architecture
-                    if file == "eval_ragas.py":
-                        continue
                     cls.python_files.append(full_path)
 
     def _get_imports_and_classes(self, file_path: Path):
