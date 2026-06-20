@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import Optional
 
+from app.auth.dependencies import require_role
 from app.auth.router import router as auth_router
 from app.config import config
 from app.core.agentic_service import create_agentic_service
@@ -142,7 +143,10 @@ async def health() -> dict:
 
 
 @app.post("/ingest", response_model=None)
-async def kick_off_ingest(x_api_key: Optional[str] = Header(None)):
+async def kick_off_ingest(
+    _user: dict = Depends(require_role("admin")),
+    x_api_key: Optional[str] = Header(None),
+):
     if _INGEST_API_KEY and x_api_key != _INGEST_API_KEY:
         return JSONResponse(
             {"ok": False, "message": "Invalid or missing API key"},
@@ -173,7 +177,11 @@ def _get_client_ip(request: Request) -> str:
 
 
 @app.post("/ask")
-async def ask(q: AskRequest, request: Request) -> dict:
+async def ask(
+    q: AskRequest,
+    request: Request,
+    _user: dict = Depends(require_role("admin", "viewer")),
+) -> dict:
     client_ip = _get_client_ip(request)
     if not await _rate_limiter.check(client_ip):
         return JSONResponse(

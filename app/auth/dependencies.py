@@ -30,3 +30,20 @@ async def get_current_user(
             detail=str(e),
         )
     return payload
+
+
+def require_role(*allowed_roles: str):
+    async def _check(current_user: dict = Depends(get_current_user)) -> dict:
+        user_roles = current_user.get("roles", [])
+        if not user_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No roles assigned",
+            )
+        if not any(role in allowed_roles for role in user_roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return current_user
+    return _check
