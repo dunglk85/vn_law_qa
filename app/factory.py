@@ -11,16 +11,20 @@ No business-logic files need to change.
 """
 from __future__ import annotations
 
+import logging
+
 from app.config import config
-from app.ports.embeddings import EmbeddingsPort
-from app.ports.vector_store import VectorStorePort
-from app.ports.llm import LLMPort
-from app.ports.reranker import RerankerPort
 from app.ports.cache import CachePort
 from app.ports.chunking import ChunkingPort
-from app.ports.retriever import RetrieverPort
-from app.ports.query_transformer import QueryTransformerPort
+from app.ports.embeddings import EmbeddingsPort
+from app.ports.llm import LLMPort
 from app.ports.metadata_enrichment import MetadataEnrichmentPort
+from app.ports.query_transformer import QueryTransformerPort
+from app.ports.reranker import RerankerPort
+from app.ports.retriever import RetrieverPort
+from app.ports.vector_store import VectorStorePort
+
+logger = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------- #
