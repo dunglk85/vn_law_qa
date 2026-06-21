@@ -54,6 +54,72 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+  legal-research-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.a2a
+    container_name: cka-legal-research
+    ports:
+      - "8101:8101"
+    env_file:
+      - .env
+    environment:
+      - A2A_AGENT=legal-research
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:8101/health || exit 1" ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  citation-checker-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.a2a
+    container_name: cka-citation-checker
+    ports:
+      - "8102:8102"
+    env_file:
+      - .env
+    environment:
+      - A2A_AGENT=citation-checker
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:8102/health || exit 1" ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  response-synthesizer-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.a2a
+    container_name: cka-response-synth
+    ports:
+      - "8103:8103"
+    env_file:
+      - .env
+    environment:
+      - A2A_AGENT=response-synthesizer
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:8103/health || exit 1" ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
   pgweb:
     container_name: pgweb
     restart: always

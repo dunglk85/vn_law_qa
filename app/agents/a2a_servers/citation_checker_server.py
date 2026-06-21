@@ -10,14 +10,12 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
-from app.config import config
-from app.core.models import Article, Citation
+from app.core.models import Article
 from app.factory import create_embeddings, create_llm, create_vector_store
 
 logger = logging.getLogger(__name__)
@@ -60,6 +58,11 @@ AGENT_CARD = {
 @app.get("/agent-card")
 async def get_agent_card():
     return JSONResponse(AGENT_CARD)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "agent": "citation-checker-agent", "version": "1.0.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +156,7 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
 
 def _now() -> str:
     from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(timezone.UTC if hasattr(timezone, "UTC") else timezone.utc).isoformat()
 
 
 async def _error_stream(task_id: str, message: str):

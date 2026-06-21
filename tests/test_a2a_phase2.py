@@ -250,6 +250,41 @@ class TestA2ACitationCheckerServer:
 
 
 # ---------------------------------------------------------------------------
+# Response Synthesizer Server Tests (skip if langchain not available)
+# ---------------------------------------------------------------------------
+
+
+class TestA2AResponseSynthesizerServer:
+    def test_agent_card_content(self):
+        pytest.importorskip("langchain_core")
+        from app.agents.a2a_servers.response_synthesizer_server import AGENT_CARD
+
+        assert AGENT_CARD["name"] == "response-synthesizer-agent"
+        assert AGENT_CARD["capabilities"]["streaming"] is True
+        assert len(AGENT_CARD["skills"]) == 1
+        assert AGENT_CARD["skills"][0]["id"] == "response_synthesis"
+
+    def test_agent_card_inputs(self):
+        pytest.importorskip("langchain_core")
+        from app.agents.a2a_servers.response_synthesizer_server import AGENT_CARD
+
+        skill = AGENT_CARD["skills"][0]
+        input_names = [i["name"] for i in skill["inputs"]]
+        assert "query" in input_names
+        assert "citations" in input_names
+
+    def test_agent_card_outputs(self):
+        pytest.importorskip("langchain_core")
+        from app.agents.a2a_servers.response_synthesizer_server import AGENT_CARD
+
+        skill = AGENT_CARD["skills"][0]
+        output_names = [o["name"] for o in skill["outputs"]]
+        assert "response" in output_names
+        assert "citations" in output_names
+        assert "metadata" in output_names
+
+
+# ---------------------------------------------------------------------------
 # Factory Tests
 # ---------------------------------------------------------------------------
 

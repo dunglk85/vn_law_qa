@@ -1,27 +1,26 @@
-"""Standalone A2A JSON-RPC server wrapping the LegalResearchAgent.
+"""Standalone A2A JSON-RPC server wrapping the ResponseSynthesizerAgent.
 
 Usage:
-    uvicorn app.agents.a2a_servers.legal_research_server:app --port 8101
+    uvicorn app.agents.a2a_servers.response_synthesizer_server:app --port 8103
 
-Requires env vars: VECTOR_STORE_TYPE, DATABASE_URL, LLM_TYPE, LLM_MODEL, etc.
+Requires env vars: LLM_TYPE, LLM_MODEL, etc.
 """
 from __future__ import annotations
 
 import json
 import logging
 import uuid
-from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
-from app.core.models import Article
-from app.factory import create_llm, create_retriever, create_vector_store
+from app.core.models import Citation
+from app.factory import create_llm
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Legal Research A2A Agent")
+app = FastAPI(title="Response Synthesizer A2A Agent")
 
 
 # ---------------------------------------------------------------------------
@@ -29,8 +28,8 @@ app = FastAPI(title="Legal Research A2A Agent")
 # ---------------------------------------------------------------------------
 
 AGENT_CARD = {
-    "name": "legal-research-agent",
-    "description": "Performs legal research: HyDE generation, sub-query decomposition, parallel retrieval, LLM relevance scoring, blended ranking.",
+    "name": "response-synthesizer-agent",
+    "description": "Generates grounded Vietnamese legal responses from verified citations.",
     "version": "1.0.0",
     "capabilities": {
         "streaming": True,
@@ -39,16 +38,18 @@ AGENT_CARD = {
     },
     "skills": [
         {
-            "id": "legal_research",
-            "name": "Legal Research",
-            "description": "Given a legal query, returns ranked legal articles with relevance scores.",
-            "tags": ["legal", "retrieval", "ranking"],
+            "id": "response_synthesis",
+            "name": "Response Synthesis",
+            "description": "Synthesizes a natural-language legal response from verified citations.",
+            "tags": ["legal", "synthesis", "generation"],
             "inputs": [
-                {"name": "query", "type": "string", "description": "Natural language legal question"},
-                {"name": "metadata", "type": "object", "description": "Optional filtering metadata"},
+                {"name": "query", "type": "string", "description": "Original user question"},
+                {"name": "citations", "type": "array", "description": "Verified Citation objects to ground the response"},
             ],
             "outputs": [
-                {"name": "articles", "type": "array", "description": "Ranked list of Article objects"}
+                {"name": "response", "type": "string", "description": "Generated legal response in Vietnamese"},
+                {"name": "citations", "type": "array", "description": "Citations included in the response"},
+                {"name": "metadata", "type": "object", "description": "Metadata about the synthesis (citation count, length)"},
             ],
         }
     ],
@@ -63,21 +64,18 @@ async def get_agent_card():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "agent": "legal-research-agent", "version": "1.0.0"}
+    return {"status": "ok", "agent": "response-synthesizer-agent", "version": "1.0.0"}
 
 
 # ---------------------------------------------------------------------------
 # Agent instantiation
 # ---------------------------------------------------------------------------
 
-_embeddings = create_embeddings()
-_vector_store = create_vector_store(embeddings=_embeddings)
-_retriever = create_retriever(vector_store=_vector_store)
 _llm = create_llm()
 
-from app.agents.legal_research_agent import LegalResearchAgent
+from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
 
-_research_agent = LegalResearchAgent(_retriever, _llm.get_chat_model())
+_synthesis_agent = ResponseSynthesizerAgent(_llm.get_chat_model())
 
 
 # ---------------------------------------------------------------------------
@@ -89,18 +87,39 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
     task_id = params.get("id", f"task-{uuid.uuid4().hex[:12]}")
     message = params.get("message", {})
     parts = message.get("parts", [])
-    query = ""
-    for part in parts:
-        if part.get("type") == "text":
-            query = part["text"]
-            break
-        if part.get("type") == "data" and isinstance(part.get("data"), dict):
-            query = part["data"].get("query", "")
 
-    if not query:
-        return EventSourceResponse(
-            _error_stream(task_id, "No query provided in message")
-        )
+    query = ""
+    citations: list[Citation] = []
+
+    for part in parts:
+        if part.get("type") == "data" and isinstance(part.get("data"), dict):
+            data = part["data"]
+            query = data.get("query", "")
+            raw_citations = data.get("citations", [])
+            for raw in raw_citations:
+                if isinstance(raw, dict):
+                    citations.append(Citation(
+                        article_id=raw.get("article_id", ""),
+                        content=raw.get("content", ""),
+                        relevance=raw.get("relevance", 0.0),
+                        verified=raw.get("verified", False),
+                    ))
+            break
+        if part.get("type") == "text":
+            try:
+                data = json.loads(part["text"])
+                query = data.get("query", "")
+                raw_citations = data.get("citations", [])
+                for raw in raw_citations:
+                    if isinstance(raw, dict):
+                        citations.append(Citation(
+                            article_id=raw.get("article_id", ""),
+                            content=raw.get("content", ""),
+                            relevance=raw.get("relevance", 0.0),
+                            verified=raw.get("verified", False),
+                        ))
+            except (json.JSONDecodeError, TypeError):
+                query = part["text"]
 
     async def event_stream():
         yield {"event": "task_status", "data": json.dumps({
@@ -109,8 +128,7 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
         })}
 
         try:
-            articles = await _research_agent.run(query)
-            articles_dicts = [a.to_dict() if hasattr(a, "to_dict") else _article_to_dict(a) for a in articles]
+            result = await _synthesis_agent.synthesize(query, citations)
 
             yield {"event": "task_status", "data": json.dumps({
                 "id": task_id,
@@ -118,10 +136,10 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
             })}
             yield {"event": "task_artifact", "data": json.dumps({
                 "id": task_id,
-                "artifact": {"articles": articles_dicts},
+                "artifact": result,
             })}
         except Exception as exc:
-            logger.exception("Legal research failed")
+            logger.exception("Response synthesis failed")
             yield {"event": "task_status", "data": json.dumps({
                 "id": task_id,
                 "status": {"state": "failed", "timestamp": _now(), "error": str(exc)},
@@ -140,15 +158,6 @@ async def _error_stream(task_id: str, message: str):
         "id": task_id,
         "status": {"state": "failed", "timestamp": _now(), "error": message},
     })}
-
-
-def _article_to_dict(a: Any) -> dict:
-    if isinstance(a, Article):
-        return a.to_dict()
-    if isinstance(a, dict):
-        return a
-    return {"id": getattr(a, "id", ""), "content": getattr(a, "content", ""),
-            "metadata": getattr(a, "metadata", {}), "relevance_score": getattr(a, "relevance_score", 0.0)}
 
 
 # ---------------------------------------------------------------------------

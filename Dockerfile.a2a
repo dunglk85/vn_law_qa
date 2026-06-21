@@ -1,0 +1,17 @@
+FROM python:3.14-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app/ app/
+
+ENV PYTHONPATH=/app
+
+ARG A2A_AGENT=legal-research
+ENV A2A_AGENT=${A2A_AGENT}
+
+EXPOSE 8101
+
+CMD python -c "import os, sys; agent = os.environ.get('A2A_AGENT', 'legal-research'); port = {'legal-research': '8101', 'citation-checker': '8102', 'response-synthesizer': '8103'}[agent]; import uvicorn; uvicorn.run(f'app.agents.a2a_servers.{agent}_server:app', host='0.0.0.0', port=int(port))"

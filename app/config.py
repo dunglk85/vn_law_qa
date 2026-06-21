@@ -141,7 +141,7 @@ class AppConfig:
     # ------------------------------------------------------------------
     # Retry / Error Recovery
     # ------------------------------------------------------------------
-    tool_retry_max_attempts: int = _int_env("TOOL_RETRY_MAX_ATTEMPTS", 3)
+    tool_retry_max_attempts: int = _int_env("TOOL_RETRY_MAX_ATTEMPTS", 2)
     tool_retry_base_delay: float = _float_env("TOOL_RETRY_BASE_DELAY", 1.0)
 
     # ------------------------------------------------------------------
@@ -174,8 +174,8 @@ class AppConfig:
     a2a_legal_research_url: str = _str_env("A2A_LEGAL_RESEARCH_URL", "")
     a2a_citation_checker_url: str = _str_env("A2A_CITATION_CHECKER_URL", "")
     a2a_response_synthesizer_url: str = _str_env("A2A_RESPONSE_SYNTHESIZER_URL", "")
-    a2a_task_timeout: int = _int_env("A2A_TASK_TIMEOUT", 60)
-    a2a_max_retries: int = _int_env("A2A_MAX_RETRIES", 3)
+    a2a_task_timeout: int = _int_env("A2A_TASK_TIMEOUT", 25)
+    a2a_max_retries: int = _int_env("A2A_MAX_RETRIES", 1)
 
 
 # Singleton — import this everywhere instead of reading os.getenv directly
