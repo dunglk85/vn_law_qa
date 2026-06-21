@@ -308,14 +308,32 @@ def create_supervisor_agent(
 # --------------------------------------------------------------------------- #
 
 
-def create_a2a_client(research_agent, citation_agent, synthesis_agent):
+def create_a2a_client(research_agent=None, citation_agent=None, synthesis_agent=None):
     from app.adapters.agents.a2a_fallback_client import InProcessFallbackClient
+    from app.adapters.agents.a2a_remote_client import A2ARemoteClient
 
-    a2a_url = config.a2a_legal_research_url
-    if a2a_url:
-        logger.info("A2A client: remote mode (%s)", a2a_url)
-    else:
-        logger.info("A2A client: in-process fallback")
+    legal_url = config.a2a_legal_research_url
+    citation_url = config.a2a_citation_checker_url
+    synthesis_url = config.a2a_response_synthesizer_url
+
+    if legal_url or citation_url or synthesis_url:
+        agent_map = {}
+        if legal_url:
+            agent_map["legal-research-agent"] = legal_url
+        if citation_url:
+            agent_map["citation-checker-agent"] = citation_url
+        if synthesis_url:
+            agent_map["response-synthesizer-agent"] = synthesis_url
+
+        logger.info("A2A client: remote mode (%s)", agent_map)
+        return A2ARemoteClient(
+            agent_map=agent_map,
+            timeout=config.a2a_task_timeout,
+        )
+
+    logger.info("A2A client: in-process fallback")
+    if not all([research_agent, citation_agent, synthesis_agent]):
+        raise ValueError("All agents required for in-process fallback")
     return InProcessFallbackClient(
         research_agent=research_agent,
         citation_agent=citation_agent,
