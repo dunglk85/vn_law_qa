@@ -34,14 +34,7 @@ SAVE_EVERY = 10
 
 
 def get_item_id(url: str | None) -> str | None:
-    """Extract ItemID from a vbpl.vn URL.
-
-    Args:
-        url: Full vbpl.vn URL.
-
-    Returns:
-        ItemID string, or None if not found.
-    """
+    """Extract ItemID from a vbpl.vn URL."""
     if url is None:
         return None
     match = re.search(r"ItemID=(\d+).*#(.*)", url)
@@ -49,14 +42,7 @@ def get_item_id(url: str | None) -> str | None:
 
 
 def fetch_document(item_id: str) -> str | None:
-    """Fetch full text of a legal document by ItemID.
-
-    Args:
-        item_id: The vbpl.vn ItemID.
-
-    Returns:
-        HTML content of the document, or None on failure.
-    """
+    """Fetch full text of a legal document by ItemID."""
     url = f"{VBPL_BASE_URL}?ItemID={item_id}"
     try:
         response = requests.get(url, timeout=REQUEST_TIMEOUT)
@@ -74,12 +60,7 @@ def fetch_document(item_id: str) -> str | None:
 
 
 def save_data(list_id: list[str], list_noidung: list[str]) -> None:
-    """Save document IDs and content to MySQL.
-
-    Args:
-        list_id: List of ItemIDs.
-        list_noidung: List of HTML content strings.
-    """
+    """Save document IDs and content to MySQL."""
     if not list_id:
         return
     df_to_write = pd.DataFrame({"id": list_id, "noidung": list_noidung})

@@ -27,16 +27,7 @@ engine = create_engine(
 
 
 def split_document(id_vb: str, contents: str, start_id: int) -> tuple[list[dict], int]:
-    """Split a single document HTML into chapters and articles.
-
-    Args:
-        id_vb: Document identifier.
-        contents: HTML content string.
-        start_id: Starting ID for generated records.
-
-    Returns:
-        Tuple of (list of split records, next available ID).
-    """
+    """Split a single document HTML into chapters and articles."""
     try:
         soup = BeautifulSoup(contents, "html.parser").find("div", id="toanvancontent")
         texts = [p.get_text().replace("\n", "").lstrip() for p in soup.find_all("p")]
@@ -51,7 +42,6 @@ def split_document(id_vb: str, contents: str, start_id: int) -> tuple[list[dict]
     text = ""
 
     def flush(current_text: str, old_control: int, new_control: int) -> None:
-        """Flush accumulated text as a record."""
         nonlocal current_id
         if not current_text.strip():
             return

@@ -35,14 +35,7 @@ CHECKPOINT = os.getenv("LAW_CHECKPOINT", "")
 
 
 def load_json(filename: str) -> list[dict]:
-    """Load a JSON file from phap-dien directory.
-
-    Args:
-        filename: Name of the JSON file.
-
-    Returns:
-        Parsed JSON content.
-    """
+    """Load a JSON file from phap-dien directory."""
     filepath = PHAP_DIEN_DIR / filename
     logger.info("Loading %s", filepath)
     with open(filepath, encoding="utf-8") as f:
