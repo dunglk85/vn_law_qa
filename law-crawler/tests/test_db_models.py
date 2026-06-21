@@ -2,37 +2,44 @@
 
 Skipped when peewee is not installed (e.g. in main app's venv).
 """
-import os
 import pytest
 
 peewee = pytest.importorskip("peewee", reason="peewee not installed")
 
 
-def test_db_env_vars(monkeypatch):
-    """Database should use environment variables."""
+def test_mysql_config_respects_env(monkeypatch):
+    """mysql_config() should use environment variables."""
     monkeypatch.setenv("LAW_DB_USER", "testuser")
     monkeypatch.setenv("LAW_DB_PASSWORD", "testpass")
     monkeypatch.setenv("LAW_DB_HOST", "testhost")
     monkeypatch.setenv("LAW_DB_PORT", "3307")
     monkeypatch.setenv("LAW_DB_NAME", "testdb")
 
-    import importlib
-    import db as db_module
-    importlib.reload(db_module)
+    from db import mysql_config
 
-    assert db_module._DB_USER == "testuser"
-    assert db_module._DB_PASS == "testpass"
-    assert db_module._DB_HOST == "testhost"
-    assert db_module._DB_PORT == 3307
-    assert db_module._DB_NAME == "testdb"
+    cfg = mysql_config()
+    assert cfg["user"] == "testuser"
+    assert cfg["password"] == "testpass"
+    assert cfg["host"] == "testhost"
+    assert cfg["port"] == 3307
+    assert cfg["database"] == "testdb"
 
 
-def test_db_connection_string():
-    """Database connection string should be properly formatted."""
-    import db as db_module
+def test_get_connection_url():
+    """Connection URL should be properly formatted."""
+    from db import get_connection_url
 
-    assert "mysql://" in db_module.DATABASE
-    assert db_module._DB_NAME in db_module.DATABASE
+    url = get_connection_url()
+    assert "mysql://" in url
+
+
+def test_get_db_returns_instance():
+    """get_db() should return a MySQLDatabase instance."""
+    from db import get_db
+    from peewee import MySQLDatabase
+
+    db_instance = get_db()
+    assert isinstance(db_instance, MySQLDatabase)
 
 
 def test_models_import():

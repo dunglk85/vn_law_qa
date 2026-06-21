@@ -1,77 +1,45 @@
-## Crawler
+# Law Crawler — Vietnamese Law Data Ingestion
 
-Chạy module này để cào dữ liệu pháp luật từ [Pháp Điển Việt Nam](https://phapdien.moj.gov.vn/) và [Văn bản quy phạm pháp luật](https://vbpl.vn/). Bước này là optional cho hệ thống, bạn có thể bỏ qua nếu không cần dữ liệu ban đầu.
+Standalone batch tool for crawling and structuring Vietnamese legal documents into MySQL.
 
-Lấy dữ liệu từ [Pháp Điển Việt Nam](https://phapdien.moj.gov.vn/), tải file zip và giải nén vào thư mục này.
+## What it does
 
-### Cào dữ liệu pháp điển
+| Crawler | Source | Output | Description |
+|---------|--------|--------|-------------|
+| `main.py` | `phap-dien/` HTML files & JSON | MySQL (peewee ORM) | Pháp Điển Việt Nam — chapters, articles, tables, cross-references |
+| `document-crawler/main.py` | `vbpl.vn` (web) | MySQL (SQLAlchemy) | VBQPPL full-text documents linked from articles |
+| `document-crawler/split_document.py` | `vbpl` table | `vb_chimuc` table | Splits full-text HTML into chapters/articles |
 
--   Tạo 2 file json từ file jsonData.json gốc:
-    -   chude.json: chứa các chủ đề
-    -   demuc.json: chứa các đề mục
-    -   treeNode: chứa các node là các Phần, Chương, Mục, Tiểu mục, Điều.
--   Cuối cùng thư mục của bạn sẽ có cấu trúc như sau:
+## Architecture
 
-```
-phap-dien
-├── chude.json
-├── demuc.json
-├── treeNode.json
-├── demuc/
-│   ├── 1/...
-│   ├── 2/...
-```
+**Independent of the main RAG application.** The main app uses PostgreSQL + pgvector for vector search. This crawler uses MySQL for structured law data. They share no data store, no schema, and no runtime. Data must be exported/transformed if needed by the main app.
 
--   Cài đặt các thư viện cần thiết:
+## Usage
 
 ```bash
+# Start MySQL
+docker compose up -d
+
+# Install dependencies
 pip install -r requirements.txt
-```
 
--   Chạy MySQL và PHPMyAdmin containers từ docker-compose:
-
-```bash
-docker-compose up -d
-```
-
--   Chạy crawler:
-
-```bash
+# Run Pháp Điển crawler (requires phap-dien/ data files)
 python main.py
+
+# Run VBQPPL crawler
+python document-crawler/main.py
+
+# Run document splitter
+python document-crawler/split_document.py
 ```
 
-Sau khi chạy xong, dữ liệu sẽ được lưu vào DB, bạn có thể export ra bằng PHPAdmin dưới dạng .sql để dùng lại.
+## Configuration
 
-### Cào dữ liệu văn bản quy phạm pháp luật
-
--   Chạy MySQL và PHPMyAdmin containers từ docker-compose:
-
-```bash
-docker-compose up -d
-```
-
--   Tiếp tục từ thư mục ở bước trên, cd vào thư mục này:
-
-```bash
-cd document-crawler
-```
-
--   Cài đặt các thư viện cần thiết:
-
-```bash
-pip install -r requirements.txt
-```
-
--   Chạy crawler:
-
-```bash
-python main.py
-```
-
--   Phân chia VBQPPL thành các điều
-
-```bash
-python split_document.py
-```
-
-Sau khi chạy xong, dữ liệu VBQPPL và các điều sẽ được lưu vào DB, bạn có thể export ra bằng PHPAdmin dưới dạng .sql để dùng lại.
+| Env var | Default | Purpose |
+|---------|---------|---------|
+| `LAW_DB_HOST` | `localhost` | MySQL host |
+| `LAW_DB_PORT` | `3306` | MySQL port |
+| `LAW_DB_USER` | `root` | MySQL user |
+| `LAW_DB_PASSWORD` | *(empty)* | MySQL password |
+| `LAW_DB_NAME` | `law` | MySQL database |
+| `LAW_CHECKPOINT` | *(none)* | Resume from specific HTML file |

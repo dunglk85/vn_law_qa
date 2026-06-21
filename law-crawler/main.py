@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 
 from bs4 import BeautifulSoup
+from peewee import IntegrityError
 
 from db import db
 from helper import convert_roman_to_num, extract_input
@@ -58,8 +59,8 @@ def insert_chude() -> None:
                 [PDChuDe(ten=c["Text"], stt=c["STT"], id=c["Value"]) for c in chudes]
             )
         logger.info("Inserted tất cả chủ đề")
-    except Exception as exc:
-        logger.warning("Failed to insert chủ đề: %s", exc)
+    except IntegrityError as exc:
+        logger.warning("Chủ đề already loaded or conflict: %s", exc)
 
 
 def insert_demuc() -> None:
@@ -74,8 +75,8 @@ def insert_demuc() -> None:
                     for d in demucs
                 ]
             )
-    except Exception as exc:
-        logger.warning("Failed to insert đề mục: %s", exc)
+    except IntegrityError as exc:
+        logger.warning("Đề mục already loaded or conflict: %s", exc)
 
 
 def process_demuc_file(
@@ -111,13 +112,6 @@ def process_demuc_file(
     for chuong in demuc_chuong:
         mapc = chuong["MAPC"]
         stt = convert_roman_to_num(chuong["ChiMuc"])
-        chuong_data = PDChuong(
-            ten=chuong["TEN"],
-            mapc=mapc,
-            chimuc=chuong["ChiMuc"],
-            stt=stt,
-            demuc_id=chuong["DeMucID"],
-        )
         try:
             PDChuong.create(
                 ten=chuong["TEN"],
@@ -126,9 +120,15 @@ def process_demuc_file(
                 stt=stt,
                 demuc_id=chuong["DeMucID"],
             )
-        except Exception:
+        except IntegrityError:
             continue
-        chuongs_data.append(chuong_data)
+        chuongs_data.append(PDChuong(
+            ten=chuong["TEN"],
+            mapc=mapc,
+            chimuc=chuong["ChiMuc"],
+            stt=stt,
+            demuc_id=chuong["DeMucID"],
+        ))
 
     logger.info("Insert %d chương của đề mục %s", len(demuc_chuong), file_name)
 
@@ -199,11 +199,14 @@ def process_demuc_file(
                 demuc_id=dieu["DeMucID"],
                 chuong_id=dieu["ChuongID"],
             )
-        except Exception:
+        except IntegrityError:
             continue
 
         for table in tables:
-            PDTable.create(dieu_id=mapc, html=table)
+            try:
+                PDTable.create(dieu_id=mapc, html=table)
+            except IntegrityError:
+                pass
 
         # Extract attached files
         element = noidung_html.nextSibling
@@ -212,8 +215,8 @@ def process_demuc_file(
             if link:
                 try:
                     PDFile.create(dieu_id=dieu["MAPC"], link=link, path="")
-                except Exception:
-                    logger.warning("Lỗi insert file %s", link)
+                except IntegrityError:
+                    pass
             element = element.nextSibling
 
         # Extract cross-references
@@ -266,16 +269,18 @@ def insert_nodes() -> None:
             continue
 
         logger.info("Processing [%d/%d] %s", idx, total, file_name)
-        dieus_lienquan = process_demuc_file(file_name, tree_nodes)
+        with db.atomic():
+            dieus_lienquan = process_demuc_file(file_name, tree_nodes)
         all_dieus_lienquan.extend(dieus_lienquan)
 
     # Insert cross-references
     for ref in all_dieus_lienquan:
         try:
-            PDMucLienQuan.create(
-                dieu_id1=ref["dieu_id1"], dieu_id2=ref["dieu_id2"]
-            )
-        except Exception:
+            with db.atomic():
+                PDMucLienQuan.create(
+                    dieu_id1=ref["dieu_id1"], dieu_id2=ref["dieu_id2"]
+                )
+        except IntegrityError:
             logger.warning(
                 "Không thể insert liên quan %s - %s",
                 ref["dieu_id1"],

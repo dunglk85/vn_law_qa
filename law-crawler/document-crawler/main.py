@@ -6,11 +6,16 @@ import logging
 import os
 import re
 import time
+import sys
+from pathlib import Path
 
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from db import mysql_config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,14 +23,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_DB_USER = os.getenv("LAW_DB_USER", "root")
-_DB_PASS = os.getenv("LAW_DB_PASSWORD", "")
-_DB_HOST = os.getenv("LAW_DB_HOST", "localhost")
-_DB_PORT = int(os.getenv("LAW_DB_PORT", "3306"))
-_DB_NAME = os.getenv("LAW_DB_NAME", "law")
-
+_cfg = mysql_config()
 engine = create_engine(
-    f"mysql+mysqlconnector://{_DB_USER}:{_DB_PASS}@{_DB_HOST}:{_DB_PORT}/{_DB_NAME}"
+    f"mysql+mysqlconnector://{_cfg['user']}:{_cfg['password']}@{_cfg['host']}:{_cfg['port']}/{_cfg['database']}"
 )
 
 VBPL_BASE_URL = "https://vbpl.vn/TW/Pages/vbpq-toanvan.aspx"
