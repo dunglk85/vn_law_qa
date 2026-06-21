@@ -1,27 +1,38 @@
 services:
-    main-mysql:
+    law-mysql:
         image: mysql:latest
         ports:
-            - 3306:3306
+            - "${LAW_DB_PORT:-3306}:3306"
         environment:
-            MYSQL_ROOT_PASSWORD: 123456789
-            MYSQL_DATABASE: law
-            MYSQL_PASSWORD: 123456789
+            MYSQL_ROOT_PASSWORD: "${LAW_DB_PASSWORD}"
+            MYSQL_DATABASE: "${LAW_DB_NAME:-law}"
+        volumes:
+            - law_mysql_data:/var/lib/mysql
         networks:
-            - app-network
+            - law-network
+        healthcheck:
+            test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
 
     phpmyadmin:
         image: phpmyadmin
         restart: always
         ports:
-            - 8081:80
+            - "8081:80"
         depends_on:
-            - law-mysql
+            law-mysql:
+                condition: service_healthy
         networks:
-            - app-network
+            - law-network
         environment:
             PMA_HOST: law-mysql
             UPLOAD_LIMIT: 300M
+
+volumes:
+    law_mysql_data:
+
 networks:
-    app-network:
+    law-network:
         driver: bridge
