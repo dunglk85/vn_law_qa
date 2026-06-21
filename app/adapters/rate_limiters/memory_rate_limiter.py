@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import time
 
+from app.ports.rate_limiter import RateLimiterPort
 
-class MemoryRateLimiter:
+
+class MemoryRateLimiterAdapter(RateLimiterPort):
     def __init__(self, max_requests: int, window_seconds: float) -> None:
         self._max_requests = max_requests
         self._window_seconds = window_seconds

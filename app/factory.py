@@ -20,6 +20,7 @@ from app.ports.embeddings import EmbeddingsPort
 from app.ports.llm import LLMPort
 from app.ports.metadata_enrichment import MetadataEnrichmentPort
 from app.ports.query_transformer import QueryTransformerPort
+from app.ports.rate_limiter import RateLimiterPort
 from app.ports.reranker import RerankerPort
 from app.ports.retriever import RetrieverPort
 from app.ports.session_store import SessionStorePort
@@ -319,13 +320,13 @@ def create_session_store() -> SessionStorePort:
     return MemorySessionStore(ttl_seconds=config.session_ttl_seconds)
 
 
-def create_rate_limiter():
-    from app.adapters.rate_limiters.memory_rate_limiter import MemoryRateLimiter
-    from app.adapters.rate_limiters.redis_rate_limiter import RedisRateLimiter
+def create_rate_limiter() -> RateLimiterPort:
+    from app.adapters.rate_limiters.memory_rate_limiter import MemoryRateLimiterAdapter
+    from app.adapters.rate_limiters.redis_rate_limiter import RedisRateLimiterAdapter
 
     if config.redis_url:
         try:
-            limiter = RedisRateLimiter(
+            limiter = RedisRateLimiterAdapter(
                 max_requests=config.rate_limit_max,
                 window_seconds=config.rate_limit_window,
                 redis_url=config.redis_url,
@@ -336,7 +337,7 @@ def create_rate_limiter():
             logger.warning("Redis connection failed for rate limiter, falling back to in-memory")
 
     logger.warning("No REDIS_URL configured, rate limiter falling back to in-memory (single-instance only)")
-    return MemoryRateLimiter(
+    return MemoryRateLimiterAdapter(
         max_requests=config.rate_limit_max,
         window_seconds=config.rate_limit_window,
     )

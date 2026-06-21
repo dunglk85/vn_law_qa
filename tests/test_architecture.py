@@ -221,6 +221,38 @@ class TestArchitecture(unittest.TestCase):
                             f"All adapters must inherit from a Port class (e.g. VectorStorePort)."
                         )
 
+    def test_agents_do_not_import_shared(self):
+        """Verify that agents (app/agents/*) do not import from root-level shared module."""
+        agents_dir = self.app_dir / "agents"
+        for file_path in self.python_files:
+            if not file_path.is_relative_to(agents_dir):
+                continue
+            imports, _ = self._get_imports_and_classes(file_path)
+            for imp, line in imports:
+                if imp == "shared" or imp.startswith("shared."):
+                    self.fail(
+                        f"Architectural Violation in {file_path.relative_to(self.project_root)}:{line}\n"
+                        f"Agent imports 'shared' directly ('{imp}'). "
+                        f"Agents must import from 'app.core.models' instead."
+                    )
+
+    def test_agents_do_not_import_adapters(self):
+        """Verify that agents (app/agents/*) do not import adapters directly."""
+        agents_dir = self.app_dir / "agents"
+        for file_path in self.python_files:
+            if not file_path.is_relative_to(agents_dir):
+                continue
+            imports, _ = self._get_imports_and_classes(file_path)
+            for imp, line in imports:
+                forbidden_prefixes = ["app.adapters"]
+                for prefix in forbidden_prefixes:
+                    if imp == prefix or imp.startswith(prefix + "."):
+                        self.fail(
+                            f"Architectural Violation in {file_path.relative_to(self.project_root)}:{line}\n"
+                            f"Agent imports adapter '{imp}' directly. "
+                            f"Agents must receive dependencies via constructor injection."
+                        )
+
 
 if __name__ == "__main__":
     unittest.main()
