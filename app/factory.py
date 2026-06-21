@@ -67,10 +67,6 @@ def create_vector_store(embeddings: EmbeddingsPort | None = None) -> VectorStore
                 ivfflat_lists=config.ivfflat_lists,
                 ivfflat_probes=config.ivfflat_probes,
             )
-        # ── add new providers below ──────────────────────────────────────────
-        # case "chroma":
-        #     from app.adapters.vector_stores.chroma_store import ChromaStoreAdapter
-        #     return ChromaStoreAdapter(embeddings)
         case _:
             raise ValueError(
                 f"Unknown VECTOR_STORE_TYPE='{config.vector_store_type}'. "

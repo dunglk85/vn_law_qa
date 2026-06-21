@@ -44,7 +44,6 @@ class AppConfig:
     # Provider selection — change these in .env to swap implementations
     # ------------------------------------------------------------------
     vector_store_type: str = _str_env("VECTOR_STORE_TYPE", "pgvector")
-    # pgvector | chroma | qdrant
 
     llm_type: str = _str_env("LLM_TYPE", "openai")
     # openai | gemini | ollama

@@ -24,36 +24,31 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 ### Data Architecture
 
-Decision: Postgres for canonical metadata + ChromaDB for vector storage (hybrid)
+Decision: Postgres (+pgvector) for canonical metadata and vector storage (single store)
 
 Summary:
-- Postgres (+pgvector) remains the authoritative store for transactional metadata, user/session state, ACLs, and canonical records.
-- ChromaDB holds embeddings and vector indexes used for semantic retrieval and hybrid search.
+- Postgres (+pgvector) is the authoritative store for transactional metadata, user/session state, ACLs, canonical records, and vector embeddings.
+- Single store simplifies operations, eliminates sync drift, and provides atomic transactions.
 
 Implications & Patterns:
-- Ingest pipeline: write metadata to Postgres, emit an ingest event, produce embeddings, and upsert to Chroma (event-driven, eventual consistency).
-- Query path: similarity/search calls go to Chroma; results are joined with Postgres by document ID for authoritative fields.
-- Fallback: on Chroma outage use Postgres + BM25 (`rank_bm25`) for degraded retrieval quality.
-
-Operational Notes:
-- Chroma introduces additional operational surface (scaling, backups, reconciliation). Consider managed Chroma or sidecar deployment depending on budget.
-- Monitor sync lag, vector count vs metadata, and reconciliation job health.
+- Ingest pipeline: write metadata to Postgres, produce embeddings, and upsert via pgvector (atomic).
+- Query path: similarity/search calls go to pgvector; results are joined with metadata by document ID.
+- Fallback: on Postgres outage, use BM25 (`rank_bm25`) for degraded retrieval quality.
 
 Libraries & Integration:
-- Use `langchain-postgres` and `langchain-chroma` connectors with async clients and pooled connections (asyncpg/pgvector client patterns).
+- Use `langchain-postgres` connector with async clients and pooled connections (asyncpg/pgvector client patterns).
 
 Failure Modes & Mitigations:
-- Chroma outage: fallback to BM25 and surface degraded mode to users.
-- Sync drift: implement idempotent reconciliation job and alerting on lag thresholds.
+- Postgres outage: fallback to BM25 and surface degraded mode to users.
+- Performance: add HNSW or IVFFlat indexes for vector search performance.
 
 Acceptance Tests:
-- Ingest E2E: ingest a document → verify Postgres record exists and Chroma vector present.
-- Fallback test: simulate Chroma downtime and verify fallback retrieval correctness.
-- Reconciliation test: run reconciliation job on synthetic drift and assert eventual consistency.
+- Ingest E2E: ingest a document → verify Postgres record exists with vector present.
+- Fallback test: simulate Postgres downtime and verify fallback retrieval correctness.
 
 Trade-offs (short):
-- Pros: superior semantic retrieval and hybrid search capabilities.
-- Cons: increased system complexity and operational overhead.
+- Pros: simple operations, atomic transactions, proven at scale.
+- Cons: no local dev option without Postgres.
 
 ### Authentication & Security
 
@@ -1300,14 +1295,13 @@ Decision: Keep both pgvector and ChromaDB with clear role separation.
 
 **Rationale:**
 - pgvector: Existing adapters (`PGVectorStoreAdapter`, `DenseRetrieverAdapter`) already work. Canonical metadata lives in PostgreSQL. pgvector handles structured vector queries with SQL filtering.
-- ChromaDB: Better for fast prototyping, local development, and embeddings-first workflows. Handles embedding storage/retrieval without Postgres overhead.
 
-**Role Separation:**
+**Role:**
 
-| Store | Role | When Used |
-|-------|------|-----------|
-| PostgreSQL + pgvector | Production canonical store. Metadata + vectors in one DB. Supports complex SQL filters, joins, multi-tenant isolation. | Production, staging |
-| ChromaDB | Development/prototyping store. Fast local setup, no Postgres dependency. Embeddings-first workflow. | Local dev, testing |
+PostgreSQL + pgvector is the single store for:
+- Transactional metadata (users, sessions, ACLs)
+- Vector embeddings (via pgvector)
+- Complex SQL filters, joins, multi-tenant isolation
 
 **Adapter Layer:**
 
@@ -1315,29 +1309,19 @@ Decision: Keep both pgvector and ChromaDB with clear role separation.
 app/ports/retriever_port.py          # Abstract interface
 app/adapters/retrievers/
     pgvector_retriever.py            # Production: PGVectorStoreAdapter → DenseRetrieverAdapter
-    chromadb_retriever.py            # Dev: ChromaDBAdapter → DenseRetrieverAdapter (NEW)
 ```
 
-**Factory Toggle:**
+**Factory:**
 
 ```python
 # app/factory.py
 def create_retriever(config: Config) -> RetrieverPort:
-    if config.vector_store == "chromadb":
-        return ChromaDBAdapter(chroma_path=config.chromadb_path)
     return PGVectorStoreAdapter(connection=config.postgres_dsn)
 ```
 
-Config variable: `VECTOR_STORE=pgvector|chromadb` (default: `pgvector`)
-
-**Migration Path:**
-1. Phase 1: Both adapters exist, `VECTOR_STORE` toggles between them
-2. Phase 2: Add `chromadb_to_pgvector` sync script for data migration
-3. Phase 3: Deprecate ChromaDB in production, keep for local dev only
-
-**Boundary Tests Update:**
-- Add `test_vector_store_toggle`: Factory returns correct adapter based on `VECTOR_STORE` config
-- Add `test_chromadb_adapter_implements_retriever_port`: ChromaDB adapter satisfies `RetrieverPort`
+**Boundary Tests:**
+- `test_vector_store_isolation`: Factory only creates pgvector adapter
+- `test_retriever_implements_port`: Adapter satisfies `RetrieverPort`
 
 ---
 
@@ -1353,17 +1337,17 @@ Config variable: `VECTOR_STORE=pgvector|chromadb` (default: `pgvector`)
 
 ### Requirements Coverage
 
-**FR1-FR7:** All functional requirements covered. Session store (FR1), MCP tools (FR2), LangGraph reasoning (FR3), memory compression (FR4), retry+fallback (FR5), OAuth2/OIDC (FR6), pgvector+ChromaDB (FR7).
+**FR1-FR7:** All functional requirements covered. Session store (FR1), MCP tools (FR2), LangGraph reasoning (FR3), memory compression (FR4), retry+fallback (FR5), OAuth2/OIDC (FR6), pgvector (FR7).
 
 **NFR1-NFR7:** All non-functional requirements addressed. A2A timeout budget documented below. Token efficiency via Redis cache. Observability via LangSmith + SSE. Error handling via exponential backoff. Scalability via A2A K8s topology. Consistency via quality gates. Rate limiting via Redis.
 
 ### Gap Analysis
 
 **Resolved:**
-- ChromaDB vs pgvector conflict → Documented dual-store strategy with role separation
+- ChromaDB vs pgvector conflict → Removed ChromaDB, kept pgvector-only
 
 **Documented (non-blocking):**
-- A2A timeout budget: 60s per A2A call (30s timeout + 3 retries), 180s total, capped by supervisor at 90s with partial results
+- A2A timeout budget: 25s per A2A call (25s timeout + 1 retry), 75s total, capped by supervisor at 90s
 - A2A inter-service auth: mTLS in Phase 3 (K8s), JWT introspection for local dev
 - `app/auth/` added to project structure
 
