@@ -15,7 +15,7 @@ from langchain_core.language_models import BaseChatModel
 from langgraph.graph import END, START, StateGraph
 
 from app.ports.vector_store import VectorStorePort
-from shared import (
+from app.core.models import (
     Article, Citation, format_citations, llm_ainvoke, parse_json,
     RELEVANCE_THRESHOLD,
 )

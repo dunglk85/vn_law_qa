@@ -7,9 +7,12 @@ MetadataEnrichmentPort (the abstract interfaces).
 """
 from __future__ import annotations
 import glob
+import logging
 import os
 import traceback
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 from langchain_core.documents import Document
 from langchain_community.document_loaders import (
@@ -80,7 +83,7 @@ async def _load_docs(
                 docs.append(d)
 
         except Exception:
-            print(f"INGEST ERROR: failed to load {path}")
+            logger.error("INGEST ERROR: failed to load %s", path)
             traceback.print_exc()
 
     if enricher is not None:
@@ -113,22 +116,22 @@ async def run_ingest(
     docs = await _load_docs(enricher=enricher)
 
     if not docs:
-        print("INGEST ERROR: no documents loaded.")
+        logger.error("INGEST ERROR: no documents loaded.")
         return {"documents": 0, "chunks": 0}
 
     try:
         chunks = chunker.chunk(docs)
     except Exception:
-        print("INGEST ERROR: chunking failed")
+        logger.error("INGEST ERROR: chunking failed")
         traceback.print_exc()
         raise
 
     if not chunks:
-        print("INGEST ERROR: chunking produced no chunks.")
+        logger.error("INGEST ERROR: chunking produced no chunks.")
         return {"documents": len(docs), "chunks": 0}
 
     await vector_store.add_documents(chunks)
-    print(f"INGEST: {len(docs)} docs → {len(chunks)} chunks stored.")
+    logger.info("INGEST: %d docs → %d chunks stored.", len(docs), len(chunks))
 
     await vector_store.create_index()
 

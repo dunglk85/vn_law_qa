@@ -5,7 +5,7 @@ from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
 
-from shared import Citation, format_citations, llm_ainvoke
+from app.core.models import Citation, format_citations, llm_ainvoke
 
 logger = logging.getLogger(__name__)
 

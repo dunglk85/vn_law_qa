@@ -1,6 +1,9 @@
 from __future__ import annotations
+import logging
 
 from app.ports.cache import CachePort
+
+logger = logging.getLogger(__name__)
 
 
 class NoneCacheAdapter(CachePort):
@@ -11,4 +14,4 @@ class NoneCacheAdapter(CachePort):
     """
 
     def apply(self) -> None:
-        print("CACHE: No cache configured (CACHE_TYPE=none).")
+        logger.info("CACHE: No cache configured (CACHE_TYPE=none).")

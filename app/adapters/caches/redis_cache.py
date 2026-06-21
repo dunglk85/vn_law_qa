@@ -1,10 +1,13 @@
 from __future__ import annotations
+import logging
 
 from langchain_core.globals import set_llm_cache
 from langchain_redis import RedisSemanticCache
 
 from app.ports.cache import CachePort
 from app.ports.embeddings import EmbeddingsPort
+
+logger = logging.getLogger(__name__)
 
 
 class RedisCacheAdapter(CachePort):
@@ -28,4 +31,4 @@ class RedisCacheAdapter(CachePort):
             distance_threshold=self._distance_threshold,
         )
         set_llm_cache(cache)
-        print("CACHE: Redis semantic cache activated.")
+        logger.info("CACHE: Redis semantic cache activated.")

@@ -9,7 +9,7 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, Header, Request
+from fastapi import Depends, FastAPI, Header, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -69,7 +69,7 @@ _enricher = create_metadata_enricher(llm=_llm)
 try:
     _cache.apply()
 except Exception as e:
-    print(f"CACHE: Failed to activate cache ({e}). Running without cache.")
+    logger.warning("CACHE: Failed to activate cache (%s). Running without cache.", e)
 
 # Rate limiter (Redis-backed with in-memory fallback)
 _rate_limiter = create_rate_limiter()
@@ -90,7 +90,7 @@ _rag_service = RAGService(
 _agentic_service = None
 _VALID_RAG_MODES = {"legacy", "agentic"}
 if config.rag_mode.lower() not in _VALID_RAG_MODES:
-    print(f"WARNING: Unknown RAG_MODE='{config.rag_mode}'. Falling back to legacy. Valid: {_VALID_RAG_MODES}")
+    logger.warning("Unknown RAG_MODE='%s'. Falling back to legacy. Valid: %s", config.rag_mode, _VALID_RAG_MODES)
 if config.rag_mode.lower() == "agentic":
     _agentic_service = create_agentic_service(
         vector_store=_vector_store,
@@ -99,9 +99,9 @@ if config.rag_mode.lower() == "agentic":
         query_transformer=_query_transformer,
         session_store=_session_store,
     )
-    print("RAG_MODE=agentic: AgenticService initialized")
+    logger.info("RAG_MODE=agentic: AgenticService initialized")
 else:
-    print("RAG_MODE=legacy: RAGService initialized (default)")
+    logger.info("RAG_MODE=legacy: RAGService initialized (default)")
 
 # --------------------------------------------------------------------------- #
 # Ingestion state                                                              #

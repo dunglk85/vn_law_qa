@@ -1,6 +1,9 @@
 from __future__ import annotations
 import asyncio
+import logging
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 from langchain_core.documents import Document
 from langchain_core.language_models import BaseChatModel
@@ -54,7 +57,7 @@ class LLMEnricherAdapter(MetadataEnrichmentPort):
                 keywords_text = keywords_result.content.strip()
                 doc.metadata["keywords"] = [k.strip() for k in keywords_text.split(",") if k.strip()]
             except Exception as exc:
-                print(f"ENRICH ERROR: failed to enrich document: {exc}")
+                logger.error("ENRICH ERROR: failed to enrich document: %s", exc)
 
         tasks = [_enrich_doc(doc) for doc in documents]
         await asyncio.gather(*tasks, return_exceptions=True)

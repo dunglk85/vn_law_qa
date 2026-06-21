@@ -8,7 +8,6 @@ from langchain_community.retrievers import BM25Retriever
 
 from app.ports.retriever import RetrieverPort
 from app.ports.vector_store import VectorStorePort
-from app.config import config
 
 
 class _HybridInterleavingRetriever(BaseRetriever):
@@ -71,6 +70,7 @@ class HybridInterleavingRetrieverAdapter(RetrieverPort):
     def __init__(self, vector_store: VectorStorePort, k: int = 5) -> None:
         self._vector_store = vector_store
         self._k = k
+        self._retrieval_k = k
         self._bm25: Optional[BM25Retriever] = None
 
     def build_index(self, documents: List[Document]) -> None:
@@ -79,7 +79,7 @@ class HybridInterleavingRetrieverAdapter(RetrieverPort):
     def get_retriever(self, search_kwargs: Optional[dict] = None) -> BaseRetriever:
         if self._bm25 is None:
             raise RuntimeError("HybridInterleavingRetrieverAdapter: index not built. Call build_index() first.")
-        kwargs = search_kwargs or {"k": config.retrieval_k}
+        kwargs = search_kwargs or {"k": self._retrieval_k}
         vector_store_retriever = self._vector_store.as_retriever(search_kwargs=kwargs)
         wrapper = _HybridInterleavingRetriever()
         wrapper._dense_retriever = vector_store_retriever

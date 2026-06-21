@@ -30,7 +30,9 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - .:/app
+      - ./.env:/app/.env:ro
+      - ./data:/app/data
+      - ./shared.py:/app/shared.py:ro
     healthcheck:
       test: [ "CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1" ]
       interval: 10s

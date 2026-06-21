@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import List, Optional
 import asyncio
+import logging
 
 import psycopg
 from langchain_postgres import PGVector
@@ -10,7 +11,8 @@ from langchain_core.callbacks import CallbackManagerForRetrieverRun
 
 from app.ports.vector_store import VectorStorePort
 from app.ports.embeddings import EmbeddingsPort
-from app.config import config
+
+logger = logging.getLogger(__name__)
 
 
 class _SyncRetriever(BaseRetriever):
@@ -29,7 +31,7 @@ class _SyncRetriever(BaseRetriever):
         return await asyncio.to_thread(self._get_relevant_documents, query, run_manager=run_manager)
 
 
-def _create_hnsw_index_sync(connection_string: str, collection_name: str) -> None:
+def _create_hnsw_index_sync(connection_string: str, collection_name: str, hnsw_m: int, hnsw_ef_construction: int) -> None:
     conn_str = connection_string.replace("postgresql+psycopg://", "postgresql://")
     index_name = f"hnsw_{collection_name}_embedding_idx"
 
@@ -41,20 +43,20 @@ def _create_hnsw_index_sync(connection_string: str, collection_name: str) -> Non
                 (index_name,),
             )
             if cur.fetchone():
-                print(f"PGVECTOR: HNSW index '{index_name}' already exists.")
+                logger.info("PGVECTOR: HNSW index '%s' already exists.", index_name)
                 return
 
             cur.execute(
                 f'CREATE INDEX "{index_name}" '
                 "ON langchain_pg_embedding USING hnsw (embedding vector_cosine_ops) "
                 "WITH (m = %s, ef_construction = %s)",
-                (config.hnsw_m, config.hnsw_ef_construction),
+                (hnsw_m, hnsw_ef_construction),
             )
             conn.commit()
-            print(f"PGVECTOR: HNSW index '{index_name}' created successfully.")
+            logger.info("PGVECTOR: HNSW index '%s' created successfully.", index_name)
 
 
-def _create_ivfflat_index_sync(connection_string: str, collection_name: str) -> None:
+def _create_ivfflat_index_sync(connection_string: str, collection_name: str, ivfflat_lists: int, ivfflat_probes: int) -> None:
     conn_str = connection_string.replace("postgresql+psycopg://", "postgresql://")
     index_name = f"ivfflat_{collection_name}_embedding_idx"
 
@@ -66,20 +68,20 @@ def _create_ivfflat_index_sync(connection_string: str, collection_name: str) -> 
                 (index_name,),
             )
             if cur.fetchone():
-                print(f"PGVECTOR: IVFFlat index '{index_name}' already exists.")
+                logger.info("PGVECTOR: IVFFlat index '%s' already exists.", index_name)
                 return
 
             cur.execute(
                 f'CREATE INDEX "{index_name}" '
                 "ON langchain_pg_embedding USING ivfflat (embedding vector_cosine_ops) "
                 "WITH (lists = %s)",
-                (config.ivfflat_lists,),
+                (ivfflat_lists,),
             )
             conn.commit()
 
-            cur.execute("SET ivfflat.probes = %s", (config.ivfflat_probes,))
+            cur.execute("SET ivfflat.probes = %s", (ivfflat_probes,))
             conn.commit()
-            print(f"PGVECTOR: IVFFlat index '{index_name}' created successfully (lists={config.ivfflat_lists}, probes={config.ivfflat_probes}).")
+            logger.info("PGVECTOR: IVFFlat index '%s' created successfully (lists=%d, probes=%d).", index_name, ivfflat_lists, ivfflat_probes)
 
 
 class PGVectorStoreAdapter(VectorStorePort):
@@ -93,10 +95,24 @@ class PGVectorStoreAdapter(VectorStorePort):
 
     COLLECTION_NAME = "langchain"
 
-    def __init__(self, connection_string: str, embeddings_port: EmbeddingsPort) -> None:
+    def __init__(
+        self,
+        connection_string: str,
+        embeddings_port: EmbeddingsPort,
+        index_type: str = "hnsw",
+        hnsw_m: int = 16,
+        hnsw_ef_construction: int = 64,
+        ivfflat_lists: int = 100,
+        ivfflat_probes: int = 10,
+    ) -> None:
         self._connection_string = connection_string.replace("postgresql+asyncpg://", "postgresql+psycopg://")
         self._embeddings = embeddings_port.get_embeddings()
         self._store: PGVector | None = None
+        self._index_type = index_type
+        self._hnsw_m = hnsw_m
+        self._hnsw_ef_construction = hnsw_ef_construction
+        self._ivfflat_lists = ivfflat_lists
+        self._ivfflat_probes = ivfflat_probes
 
     def _get_store(self) -> PGVector:
         """Lazy-init the underlying PGVector store."""
@@ -134,23 +150,25 @@ class PGVectorStoreAdapter(VectorStorePort):
         return wrapper
 
     async def create_index(self) -> None:
-        match config.index_type:
+        match self._index_type:
             case "hnsw":
                 try:
                     await asyncio.to_thread(
-                        _create_hnsw_index_sync, self._connection_string, self.COLLECTION_NAME
+                        _create_hnsw_index_sync, self._connection_string, self.COLLECTION_NAME,
+                        self._hnsw_m, self._hnsw_ef_construction,
                     )
                 except Exception as exc:
-                    print(f"PGVECTOR: HNSW index creation failed: {exc}")
+                    logger.error("PGVECTOR: HNSW index creation failed: %s", exc)
             case "ivfflat":
                 try:
                     await asyncio.to_thread(
-                        _create_ivfflat_index_sync, self._connection_string, self.COLLECTION_NAME
+                        _create_ivfflat_index_sync, self._connection_string, self.COLLECTION_NAME,
+                        self._ivfflat_lists, self._ivfflat_probes,
                     )
                 except Exception as exc:
-                    print(f"PGVECTOR: IVFFlat index creation failed: {exc}")
+                    logger.error("PGVECTOR: IVFFlat index creation failed: %s", exc)
             case _:
                 raise ValueError(
-                    f"Unknown INDEX_TYPE='{config.index_type}'. "
+                    f"Unknown INDEX_TYPE='{self._index_type}'. "
                     "Supported: hnsw, ivfflat"
                 )

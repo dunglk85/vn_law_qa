@@ -36,7 +36,7 @@ def create_embeddings() -> EmbeddingsPort:
     match config.embeddings_type:
         case "openai":
             from app.adapters.embeddings.openai_embeddings import OpenAIEmbeddingsAdapter
-            return OpenAIEmbeddingsAdapter(model=config.embeddings_model)
+            return OpenAIEmbeddingsAdapter(model=config.embeddings_model, api_key=config.openai_api_key)
         # ── add new providers below ──────────────────────────────────────────
         # case "huggingface":
         #     from app.adapters.embeddings.hf_embeddings import HFEmbeddingsAdapter
@@ -57,7 +57,14 @@ def create_vector_store(embeddings: EmbeddingsPort | None = None) -> VectorStore
     match config.vector_store_type:
         case "pgvector":
             from app.adapters.vector_stores.pgvector_store import PGVectorStoreAdapter
-            return PGVectorStoreAdapter(config.database_url, embeddings)
+            return PGVectorStoreAdapter(
+                config.database_url, embeddings,
+                index_type=config.index_type,
+                hnsw_m=config.hnsw_m,
+                hnsw_ef_construction=config.hnsw_ef_construction,
+                ivfflat_lists=config.ivfflat_lists,
+                ivfflat_probes=config.ivfflat_probes,
+            )
         # ── add new providers below ──────────────────────────────────────────
         # case "chroma":
         #     from app.adapters.vector_stores.chroma_store import ChromaStoreAdapter
@@ -77,7 +84,7 @@ def create_llm() -> LLMPort:
     match config.llm_type:
         case "openai":
             from app.adapters.llms.openai_llm import OpenAILLMAdapter
-            return OpenAILLMAdapter(model=config.llm_model)
+            return OpenAILLMAdapter(model=config.llm_model, api_key=config.openai_api_key)
         # ── add new providers below ──────────────────────────────────────────
         # case "gemini":
         #     from app.adapters.llms.gemini_llm import GeminiLLMAdapter
@@ -103,6 +110,7 @@ def create_reranker(embeddings: EmbeddingsPort | None = None) -> RerankerPort:
             return CohereRerankerAdapter(
                 model=config.reranker_model,
                 top_n=config.reranker_top_n,
+                api_key=config.cohere_api_key,
             )
         case "cross_encoder":
             from app.adapters.rerankers.cross_encoder_reranker import CrossEncoderRerankerAdapter
@@ -192,7 +200,7 @@ def create_retriever(vector_store: VectorStorePort) -> RetrieverPort:
     match config.retriever_type:
         case "dense":
             from app.adapters.retrievers.dense_retriever import DenseRetrieverAdapter
-            return DenseRetrieverAdapter(vector_store)
+            return DenseRetrieverAdapter(vector_store, k=config.retrieval_k)
         case "bm25":
             from app.adapters.retrievers.bm25_retriever import BM25RetrieverAdapter
             return BM25RetrieverAdapter(k=config.retrieval_k)

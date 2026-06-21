@@ -158,7 +158,25 @@ class AppConfig:
     jwt_algorithm: str = _str_env("JWT_ALGORITHM", "HS256")
     access_token_expire_minutes: int = _int_env("ACCESS_TOKEN_EXPIRE_MINUTES", 30)
     refresh_token_expire_days: int = _int_env("REFRESH_TOKEN_EXPIRE_DAYS", 7)
+    admin_username: str = _str_env("ADMIN_USERNAME", "admin")
+    admin_password: str = _str_env("ADMIN_PASSWORD", "admin")
 
 
 # Singleton — import this everywhere instead of reading os.getenv directly
 config = AppConfig()
+
+# --- Startup validation ---
+import logging as _logging
+_log = _logging.getLogger(__name__)
+
+if config.jwt_secret == "change-me-in-production":
+    _log.warning(
+        "JWT_SECRET is using the default value — "
+        "set a strong secret in production via the JWT_SECRET env var"
+    )
+
+if config.admin_password == "admin":
+    _log.warning(
+        "ADMIN_PASSWORD is 'admin' — "
+        "set a strong password in production via the ADMIN_PASSWORD env var"
+    )

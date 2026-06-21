@@ -15,7 +15,7 @@ from langchain_core.language_models import BaseChatModel
 from langgraph.graph import END, START, StateGraph
 
 from app.ports.retriever import RetrieverPort
-from shared import (
+from app.core.models import (
     Article, llm_ainvoke, parse_json, parse_list,
     N_RESULTS_PER_VECTOR, TOP_K_RESEARCH, TOP_K_LLM_SCORE,
     HYDE_ENABLED, SUBQUERY_COUNT,

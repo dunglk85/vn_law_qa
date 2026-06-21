@@ -18,7 +18,7 @@ from langgraph.graph.message import add_messages
 
 from app.config import config
 from app.core.retry import retry_with_backoff
-from shared import MAX_RETRIES, QUALITY_THRESHOLD, Article, Citation, Task, llm_ainvoke, parse_json
+from app.core.models import MAX_RETRIES, QUALITY_THRESHOLD, Article, Citation, Task, llm_ainvoke, parse_json
 
 from .citation_checker_agent import CitationCheckerAgent
 from .legal_research_agent import LegalResearchAgent
