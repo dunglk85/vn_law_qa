@@ -1,4 +1,24 @@
 ---
+stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8]
+workflowType: 'architecture'
+lastStep: 8
+status: 'complete'
+completedAt: '2026-06-21'
+inputDocuments:
+  - "docs/architecture.md"
+  - "_bmad-output/planning-artifacts/architecture.md"
+  - "_bmad-output/planning-artifacts/epics.md"
+workflowType: 'architecture'
+project_name: 'company-knowledge-assistant'
+user_name: 'Admin'
+date: '2026-06-21'
+---
+
+# Architecture Decision Document
+
+_This document builds collaboratively through step-by-step discovery. Sections are appended as we work through each architectural decision together._
+
+---
 
 ## Core Architectural Decisions
 
@@ -1271,3 +1291,101 @@ Both are governed by the Linux Foundation Agentic AI Foundation. Both are produc
 | `test_a2a_response_synthesis_endpoint` | Response synthesizer agent serves valid Agent Card |
 | `test_a2a_supervisor_end_to_end` | Full chain with A2A agents produces same answer format as in-process |
 ```
+
+---
+
+## Dual-Store Reconciliation: pgvector + ChromaDB
+
+Decision: Keep both pgvector and ChromaDB with clear role separation.
+
+**Rationale:**
+- pgvector: Existing adapters (`PGVectorStoreAdapter`, `DenseRetrieverAdapter`) already work. Canonical metadata lives in PostgreSQL. pgvector handles structured vector queries with SQL filtering.
+- ChromaDB: Better for fast prototyping, local development, and embeddings-first workflows. Handles embedding storage/retrieval without Postgres overhead.
+
+**Role Separation:**
+
+| Store | Role | When Used |
+|-------|------|-----------|
+| PostgreSQL + pgvector | Production canonical store. Metadata + vectors in one DB. Supports complex SQL filters, joins, multi-tenant isolation. | Production, staging |
+| ChromaDB | Development/prototyping store. Fast local setup, no Postgres dependency. Embeddings-first workflow. | Local dev, testing |
+
+**Adapter Layer:**
+
+```
+app/ports/retriever_port.py          # Abstract interface
+app/adapters/retrievers/
+    pgvector_retriever.py            # Production: PGVectorStoreAdapter → DenseRetrieverAdapter
+    chromadb_retriever.py            # Dev: ChromaDBAdapter → DenseRetrieverAdapter (NEW)
+```
+
+**Factory Toggle:**
+
+```python
+# app/factory.py
+def create_retriever(config: Config) -> RetrieverPort:
+    if config.vector_store == "chromadb":
+        return ChromaDBAdapter(chroma_path=config.chromadb_path)
+    return PGVectorStoreAdapter(connection=config.postgres_dsn)
+```
+
+Config variable: `VECTOR_STORE=pgvector|chromadb` (default: `pgvector`)
+
+**Migration Path:**
+1. Phase 1: Both adapters exist, `VECTOR_STORE` toggles between them
+2. Phase 2: Add `chromadb_to_pgvector` sync script for data migration
+3. Phase 3: Deprecate ChromaDB in production, keep for local dev only
+
+**Boundary Tests Update:**
+- Add `test_vector_store_toggle`: Factory returns correct adapter based on `VECTOR_STORE` config
+- Add `test_chromadb_adapter_implements_retriever_port`: ChromaDB adapter satisfies `RetrieverPort`
+
+---
+
+## Architecture Validation Results
+
+### Coherence Assessment
+
+**Decision Compatibility:** All decisions work together. MCP (agent→tool) and A2A (agent→agent) are cleanly separated. LangGraph state machine is preserved inside A2A wrappers. Redis handles caching, rate limiting, and sessions consistently.
+
+**Pattern Consistency:** Naming (snake_case), async (asyncio.wait_for with timeouts), error handling (retry + fallback), and logging (%s-style) are consistent across all sections.
+
+**Structure Alignment:** Directory structure supports all architectural decisions. A2A servers are separate FastAPI apps. MCP server is outside `app/`. Ports remain pure interfaces.
+
+### Requirements Coverage
+
+**FR1-FR7:** All functional requirements covered. Session store (FR1), MCP tools (FR2), LangGraph reasoning (FR3), memory compression (FR4), retry+fallback (FR5), OAuth2/OIDC (FR6), pgvector+ChromaDB (FR7).
+
+**NFR1-NFR7:** All non-functional requirements addressed. A2A timeout budget documented below. Token efficiency via Redis cache. Observability via LangSmith + SSE. Error handling via exponential backoff. Scalability via A2A K8s topology. Consistency via quality gates. Rate limiting via Redis.
+
+### Gap Analysis
+
+**Resolved:**
+- ChromaDB vs pgvector conflict → Documented dual-store strategy with role separation
+
+**Documented (non-blocking):**
+- A2A timeout budget: 60s per A2A call (30s timeout + 3 retries), 180s total, capped by supervisor at 90s with partial results
+- A2A inter-service auth: mTLS in Phase 3 (K8s), JWT introspection for local dev
+- `app/auth/` added to project structure
+
+### Architecture Completeness Checklist
+
+- [x] Project context thoroughly analyzed
+- [x] Scale and complexity assessed
+- [x] Technical constraints identified
+- [x] Cross-cutting concerns mapped
+- [x] Critical decisions documented with versions
+- [x] Technology stack fully specified
+- [x] Integration patterns defined
+- [x] Performance considerations addressed
+- [x] Naming conventions established
+- [x] Structure patterns defined
+- [x] Communication patterns specified
+- [x] Process patterns documented
+- [x] Complete directory structure defined
+- [x] Component boundaries established
+- [x] Integration points mapped
+- [x] Requirements to structure mapping complete
+
+**Overall Status:** READY FOR IMPLEMENTATION
+
+**Confidence:** High

@@ -199,6 +199,57 @@ class TestA2ALegalResearchServer:
 
 
 # ---------------------------------------------------------------------------
+# Citation Checker Server Tests (skip if langchain not available)
+# ---------------------------------------------------------------------------
+
+
+class TestA2ACitationCheckerServer:
+    def test_agent_card_content(self):
+        pytest.importorskip("langchain_core")
+        from app.agents.a2a_servers.citation_checker_server import AGENT_CARD
+
+        assert AGENT_CARD["name"] == "citation-checker-agent"
+        assert AGENT_CARD["capabilities"]["streaming"] is True
+        assert len(AGENT_CARD["skills"]) == 1
+        assert AGENT_CARD["skills"][0]["id"] == "citation_check"
+
+    def test_agent_card_inputs(self):
+        pytest.importorskip("langchain_core")
+        from app.agents.a2a_servers.citation_checker_server import AGENT_CARD
+
+        skill = AGENT_CARD["skills"][0]
+        input_names = [i["name"] for i in skill["inputs"]]
+        assert "articles" in input_names
+        assert "query" in input_names
+
+    def test_agent_card_outputs(self):
+        pytest.importorskip("langchain_core")
+        from app.agents.a2a_servers.citation_checker_server import AGENT_CARD
+
+        skill = AGENT_CARD["skills"][0]
+        output_names = [o["name"] for o in skill["outputs"]]
+        assert "citations" in output_names
+
+    def test_error_stream(self):
+        pytest.importorskip("langchain_core")
+        from app.agents.a2a_servers.citation_checker_server import _error_stream
+        import asyncio
+
+        async def collect():
+            events = []
+            async for ev in _error_stream("task-1", "no articles"):
+                events.append(ev)
+            return events
+
+        events = asyncio.run(collect())
+        assert len(events) == 1
+        assert events[0]["event"] == "task_status"
+        data = json.loads(events[0]["data"])
+        assert data["status"]["state"] == "failed"
+        assert data["status"]["error"] == "no articles"
+
+
+# ---------------------------------------------------------------------------
 # Factory Tests
 # ---------------------------------------------------------------------------
 
