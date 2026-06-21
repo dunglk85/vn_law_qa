@@ -11,6 +11,7 @@ No business-logic files need to change.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from app.config import config
@@ -318,6 +319,46 @@ def create_session_store() -> SessionStorePort:
     from app.adapters.session_stores.memory_session_store import MemorySessionStore
     logger.warning("No REDIS_URL configured, session store using in-memory (single-instance only)")
     return MemorySessionStore(ttl_seconds=config.session_ttl_seconds)
+
+
+# --------------------------------------------------------------------------- #
+# Knowledge Search Tool (MCP-backed with direct fallback)                     #
+# --------------------------------------------------------------------------- #
+
+
+def create_knowledge_search_tool(retriever_port: RetrieverPort | None = None):
+    """Return a knowledge_search callable — either MCP-backed or direct.
+
+    When MCP_ENABLED=true, spawns an MCP server subprocess and returns an
+    MCP-backed tool. Falls back to the direct LangChain @tool on failure.
+    When MCP_ENABLED=false (default), returns the existing direct @tool.
+    """
+    if not config.mcp_enabled:
+        from app.agents.tools.knowledge_search import create_knowledge_search_tool as _direct
+
+        if retriever_port is None:
+            raise ValueError("retriever_port required when MCP_ENABLED=false")
+        return _direct(retriever_port, k=config.retrieval_k)
+
+    from app.adapters.tools.mcp_tool_adapter import create_mcp_knowledge_search_tool as _mcp
+
+    try:
+        tool = asyncio.run(
+            _mcp(
+                server_timeout=config.mcp_server_timeout,
+                max_restarts=config.mcp_max_restarts,
+            )
+        )
+        logger.info("Knowledge search tool: MCP-backed")
+        return tool
+    except Exception as exc:
+        logger.warning("MCP tool creation failed, falling back to direct: %s", exc)
+        if retriever_port is None:
+            raise RuntimeError("MCP failed and no retriever_port for fallback") from exc
+
+        from app.agents.tools.knowledge_search import create_knowledge_search_tool as _direct
+
+        return _direct(retriever_port, k=config.retrieval_k)
 
 
 def create_rate_limiter() -> RateLimiterPort:

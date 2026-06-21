@@ -72,6 +72,9 @@ stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8]
 lastStep: 8
 status: 'complete'
 completedAt: '2026-06-20'
+appendedAt: '2026-06-21'
+appendedSections:
+  - "MCP Decoupling: Knowledge Search Tool"
 inputDocuments: 
   - "api.py (FastAPI bootstrap, dependency wiring)"
   - "docker-compose.yml (service architecture)"
@@ -589,3 +592,126 @@ company-knowledge-assistant/
 
 **First Implementation Priority:**
 - The agentic conversion is already partially implemented. Focus on hardening: add Redis-backed rate limiting, set up Alembic migrations, and move evaluation script to `scripts/`
+
+---
+
+## MCP Decoupling: Knowledge Search Tool
+
+### Decision
+
+Decouple the `knowledge_search` tool from LangChain's in-process `@tool` API using the **Model Context Protocol (MCP)**. The tool logic becomes an independent MCP server accessible via stdio (or optionally SSE) transport. The application connects through an MCP client while keeping the `SupervisorAgent` interface unchanged.
+
+### Context
+
+The current `knowledge_search` tool at `app/agents/tools/knowledge_search.py` is a LangChain `@tool` that requires `RetrieverPort` injection at build time via Python import. It cannot be consumed by non-LangChain clients (e.g., direct MCP clients, future CLI tools, cross-language agents) without duplicating the logic. It also shares the application process's memory and failure domain.
+
+### Architecture
+
+```
+Before:
+SupervisorAgent → knowledge_search_tool (LangChain @tool) → RetrieverPort
+
+After:
+SupervisorAgent → MCPToolWrapper (LangChain-compatible) → MCP Client → [stdio]
+                                                                          ↓
+                                                           MCP Server (knowledge-search)
+                                                                          ↓
+                                                                   RetrieverPort
+```
+
+### Components
+
+#### 1. MCP Server (`mcp-servers/knowledge-search/server.py`)
+
+- Independent Python process using `mcp` SDK v1.x (`FastMCP`)
+- Accepts retriever configuration via env vars (`RETRIEVER_TYPE`, `VECTOR_STORE_TYPE`, etc.)
+- Imports the same adapter factory chain — reuses `app.ports` and `app.adapters`
+- Exposes a single MCP tool:
+
+```python
+@server.tool()
+async def knowledge_search(query: str, k: int = 5) -> list[dict]:
+    """Search the knowledge base for documents relevant to the query.
+
+    Args:
+        query: Natural language search query.
+        k: Number of results to return (default 5).
+    """
+```
+
+- Transports: **stdio** (default, spawned as subprocess by parent), **SSE** (optional for sidecar)
+- Runs its own lifecycle: startup → connection → tool invocations → shutdown
+
+#### 2. MCP Client Adapter (`app/adapters/tools/mcp_tool_adapter.py`)
+
+- Connects to the MCP server via `mcp.Client` with `StdioClientParameters`
+- On connect: calls `client.list_tools()` for capability discovery
+- Returns a callable matching the existing `@tool` signature (`ainvoke({"query": ...})`)
+- Manages reconnection: on disconnect, respawns the subprocess (up to 3 retries)
+- Timeout: wraps MCP calls in `asyncio.wait_for(..., timeout=30)`
+
+```python
+async def create_mcp_knowledge_search_tool(
+    server_script: str,
+    config: dict,
+) -> Callable:
+    """Returns an ainvoke-compatible tool backed by an MCP server subprocess."""
+```
+
+#### 3. Factory Wiring (`app/factory.py`)
+
+New factory function replaces the previous ad-hoc tool creation:
+
+```python
+def create_knowledge_search_tool(retriever_port: RetrieverPort) -> Callable:
+    if config.mcp_enabled:
+        return create_mcp_knowledge_search_tool(...)
+    # fallback: direct LangChain @tool (current behaviour)
+    from app.agents.tools.knowledge_search import create_knowledge_search_tool
+    return create_knowledge_search_tool(retriever_port, k=config.retrieval_k)
+```
+
+#### 4. SupervisorAgent — No Change
+
+The `SupervisorAgent` still receives a callable and calls `tool.ainvoke({"query": ...})`. The MCP wrapper is a drop-in replacement.
+
+### Transport Decision
+
+| Transport | Use Case | Pros | Cons |
+|-----------|----------|------|------|
+| **stdio** | Dev, single-process deploy | Zero networking, no port conflicts, simplest setup | Process-coupled, no independent scaling |
+| **SSE** | Production, K8s, multi-instance | Independent scaling, process isolation | Requires auth, port management, added latency |
+
+**Recommendation**: stdio for the initial implementation; SSE as a future option when the server needs independent deployment.
+
+### Failure Modes & Mitigations
+
+1. **MCP server crashes on startup** → Log error, fall back to direct `@tool` (degraded but functional)
+2. **MCP call times out** → Log warning, return `[]` (same as current tool's error path)
+3. **Subprocess respawn loop** → After 3 consecutive failures, pin to direct `@tool` for the lifetime of the app
+4. **Version mismatch** → Pin `mcp>=1.27,<2` to avoid v2 protocol breakage (scheduled stable: 2026-07-27)
+
+### Implications
+
+- **New dependency**: `mcp>=1.27,<2` in `requirements.txt`
+- **New directory**: `mcp-servers/knowledge-search/` with its own `pyproject.toml` (can be developed/tested independently)
+- **Docker**: If using stdio, no change. If using SSE, add the MCP server as a separate service in `docker-compose.yml`
+- **Testability**: The MCP server can be integration-tested with the MCP Inspector or in-memory transport
+- **Architecture boundary**: The MCP server lives outside `app/` — it is a consumer of `app.ports` and `app.adapters`, not part of the API/core boundary
+
+### Acceptance Tests
+
+| Test | What it verifies |
+|------|-----------------|
+| `test_mcp_server_startup` | Server starts, connects, lists tools |
+| `test_mcp_knowledge_search` | Tool returns correct results matching direct `@tool` output |
+| `test_mcp_fallback_on_crash` | When MCP server is killed, fallback to direct works |
+| `test_mcp_timeout_returns_empty` | Slow MCP response yields empty list, not crash |
+
+### New Config Variables (`app/config.py`)
+
+```python
+mcp_enabled: bool = os.getenv("MCP_ENABLED", "false").lower() == "true"
+mcp_server_timeout: int = int(os.getenv("MCP_SERVER_TIMEOUT", "30"))
+mcp_max_restarts: int = int(os.getenv("MCP_MAX_RESTARTS", "3"))
+```

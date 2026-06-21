@@ -161,6 +161,13 @@ class AppConfig:
     admin_username: str = _str_env("ADMIN_USERNAME", "admin")
     admin_password: str = _str_env("ADMIN_PASSWORD", "admin")
 
+    # ------------------------------------------------------------------
+    # MCP (Model Context Protocol)
+    # ------------------------------------------------------------------
+    mcp_enabled: bool = os.getenv("MCP_ENABLED", "false").lower() == "true"
+    mcp_server_timeout: int = _int_env("MCP_SERVER_TIMEOUT", 30)
+    mcp_max_restarts: int = _int_env("MCP_MAX_RESTARTS", 3)
+
 
 # Singleton — import this everywhere instead of reading os.getenv directly
 config = AppConfig()

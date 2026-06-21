@@ -24,6 +24,7 @@ from app.factory import (
     create_cache,
     create_chunker,
     create_embeddings,
+    create_knowledge_search_tool,
     create_llm,
     create_metadata_enricher,
     create_query_transformer,
@@ -91,12 +92,14 @@ _agentic_service = None
 _VALID_RAG_MODES = {"legacy", "agentic"}
 if config.rag_mode.lower() not in _VALID_RAG_MODES:
     logger.warning("Unknown RAG_MODE='%s'. Falling back to legacy. Valid: %s", config.rag_mode, _VALID_RAG_MODES)
+_knowledge_search_tool = create_knowledge_search_tool(retriever_port=_retriever)
 if config.rag_mode.lower() == "agentic":
     _agentic_service = create_agentic_service(
         vector_store=_vector_store,
         llm=_llm,
         retriever=_retriever,
         query_transformer=_query_transformer,
+        knowledge_search_tool=_knowledge_search_tool,
         session_store=_session_store,
     )
     logger.info("RAG_MODE=agentic: AgenticService initialized")

@@ -30,6 +30,7 @@ class AgenticService:
         llm: LLMPort,
         retriever: RetrieverPort,
         query_transformer: QueryTransformerPort,
+        knowledge_search_tool=None,
         supervisor=None,
         session_store: SessionStorePort | None = None,
     ) -> None:
@@ -46,10 +47,11 @@ class AgenticService:
             from app.agents.legal_research_agent import LegalResearchAgent
             from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
             from app.agents.supervisor_agent import SupervisorAgent
-            from app.agents.tools.knowledge_search import create_knowledge_search_tool
+            from app.agents.tools.knowledge_search import create_knowledge_search_tool as _direct_tool
 
             chat_model = llm.get_chat_model()
-            knowledge_search_tool = create_knowledge_search_tool(retriever, k=config.retrieval_k)
+            if knowledge_search_tool is None:
+                knowledge_search_tool = _direct_tool(retriever, k=config.retrieval_k)
             self._supervisor = SupervisorAgent(
                 research_agent=LegalResearchAgent(self._retriever, chat_model),
                 citation_agent=CitationCheckerAgent(self._vector_store, chat_model),
@@ -199,6 +201,11 @@ def create_agentic_service(
     llm: LLMPort,
     retriever: RetrieverPort,
     query_transformer: QueryTransformerPort,
+    knowledge_search_tool=None,
     session_store: SessionStorePort | None = None,
 ) -> AgenticService:
-    return AgenticService(vector_store, llm, retriever, query_transformer, session_store=session_store)
+    return AgenticService(
+        vector_store, llm, retriever, query_transformer,
+        knowledge_search_tool=knowledge_search_tool,
+        session_store=session_store,
+    )
