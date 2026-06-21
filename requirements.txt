@@ -60,6 +60,9 @@ python-multipart>=0.0.9,<0.1.0
 # MCP (Model Context Protocol)
 mcp>=1.27,<2
 
+# A2A (Agent-to-Agent Protocol)
+a2a-sdk>=1.1,<2
+
 # DB / embeddings
 numpy>=1.26.0,<2.0.0
 pgvector>=0.3.0,<0.4.0

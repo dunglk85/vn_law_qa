@@ -168,6 +168,15 @@ class AppConfig:
     mcp_server_timeout: int = _int_env("MCP_SERVER_TIMEOUT", 30)
     mcp_max_restarts: int = _int_env("MCP_MAX_RESTARTS", 3)
 
+    # ------------------------------------------------------------------
+    # A2A (Agent-to-Agent Protocol)
+    # ------------------------------------------------------------------
+    a2a_legal_research_url: str = _str_env("A2A_LEGAL_RESEARCH_URL", "")
+    a2a_citation_checker_url: str = _str_env("A2A_CITATION_CHECKER_URL", "")
+    a2a_response_synthesizer_url: str = _str_env("A2A_RESPONSE_SYNTHESIZER_URL", "")
+    a2a_task_timeout: int = _int_env("A2A_TASK_TIMEOUT", 60)
+    a2a_max_retries: int = _int_env("A2A_MAX_RETRIES", 3)
+
 
 # Singleton — import this everywhere instead of reading os.getenv directly
 config = AppConfig()

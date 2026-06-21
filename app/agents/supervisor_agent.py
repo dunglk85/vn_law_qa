@@ -9,7 +9,7 @@ LangGraph persists it. Routers are pure functions — never mutate state.
 """
 import logging
 import time
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, AsyncIterator, TypedDict
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -17,6 +17,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
 from app.config import config
+from app.core.a2a_client import A2AClientRouter
 from app.core.retry import retry_with_backoff
 from app.core.models import MAX_RETRIES, QUALITY_THRESHOLD, Article, Citation, Task, llm_ainvoke, parse_json
 
@@ -57,6 +58,7 @@ class SupervisorAgent:
         synthesis_agent: ResponseSynthesizerAgent,
         llm: BaseChatModel | None = None,
         knowledge_search_tool=None,
+        a2a_client: A2AClientRouter | None = None,
     ):
         if llm is None:
             raise ValueError("SupervisorAgent requires a chat model")
@@ -65,6 +67,7 @@ class SupervisorAgent:
         self.synthesis_agent = synthesis_agent
         self.llm             = llm
         self.knowledge_search_tool = knowledge_search_tool
+        self._a2a_client     = a2a_client
         self.workflow        = self._build_workflow()
 
     def _step(self, agent: str, action: str, **kwargs) -> dict:
@@ -168,12 +171,24 @@ class SupervisorAgent:
             "reasoning_steps": [*state.get("reasoning_steps", []), step],
         }
 
+    async def _run_legal_research(self, state: SupervisorState) -> list[Article]:
+        if self._a2a_client is not None:
+            articles: list[Article] = []
+            async for ev in self._a2a_client.send_task_stream(
+                agent="legal-research-agent",
+                payload={"query": state["query"], "metadata": state.get("metadata", {})},
+            ):
+                if ev.type == "task_artifact":
+                    articles = ev.artifact.get("articles", [])
+            return articles
+        return await self.research_agent.run(state["query"])
+
     async def execute_legal_research(self, state: SupervisorState) -> dict:
         steps = list(state.get("reasoning_steps", []))
         articles: list[Article] = []
         try:
             articles = await retry_with_backoff(
-                lambda: self.research_agent.run(state["query"]),
+                lambda: self._run_legal_research(state),
                 max_attempts=config.tool_retry_max_attempts,
                 base_delay=config.tool_retry_base_delay,
                 desc="legal_research",
@@ -231,12 +246,27 @@ class SupervisorAgent:
             "reasoning_steps": steps,
         }
 
+    async def _run_citation_check(self, state: SupervisorState) -> list[Citation]:
+        if self._a2a_client is not None:
+            citations: list[Citation] = []
+            async for ev in self._a2a_client.send_task_stream(
+                agent="citation-checker-agent",
+                payload={
+                    "articles": state.get("research_results", []),
+                    "query": state["query"],
+                },
+            ):
+                if ev.type == "task_artifact":
+                    citations = ev.artifact.get("citations", [])
+            return citations
+        return await self.citation_agent.run(
+            state.get("research_results", []), state["query"])
+
     async def execute_citation_check(self, state: SupervisorState) -> dict:
         steps = list(state.get("reasoning_steps", []))
         try:
             citations = await retry_with_backoff(
-                lambda: self.citation_agent.run(
-                    state.get("research_results", []), state["query"]),
+                lambda: self._run_citation_check(state),
                 max_attempts=config.tool_retry_max_attempts,
                 base_delay=config.tool_retry_base_delay,
                 desc="citation_check",
@@ -263,13 +293,28 @@ class SupervisorAgent:
                     "retry_count": state.get("retry_count", 0) + 1,
                     "reasoning_steps": steps}
 
+    async def _run_response_synthesis(self, state: SupervisorState) -> dict:
+        if self._a2a_client is not None:
+            result: dict = {}
+            async for ev in self._a2a_client.send_task_stream(
+                agent="response-synthesizer-agent",
+                payload={
+                    "query": state["query"],
+                    "citations": state.get("verified_citations", []),
+                },
+            ):
+                if ev.type == "task_artifact":
+                    result = ev.artifact
+            return result
+        return await self.synthesis_agent.synthesize(
+            state["query"], state.get("verified_citations", []))
+
     async def execute_response_synthesis(self, state: SupervisorState) -> dict:
         new_retry = state.get("retry_count", 0) + 1
         steps = list(state.get("reasoning_steps", []))
         try:
             result = await retry_with_backoff(
-                lambda: self.synthesis_agent.synthesize(
-                    state["query"], state.get("verified_citations", [])),
+                lambda: self._run_response_synthesis(state),
                 max_attempts=config.tool_retry_max_attempts,
                 base_delay=config.tool_retry_base_delay,
                 desc="response_synthesis",

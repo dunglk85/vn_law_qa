@@ -21,15 +21,19 @@ from app.core.agentic_service import create_agentic_service
 from app.core.ingest_service import run_ingest
 from app.core.rag_service import RAGService
 from app.factory import (
+    create_a2a_client,
     create_cache,
     create_chunker,
+    create_citation_checker_agent,
     create_embeddings,
     create_knowledge_search_tool,
+    create_legal_research_agent,
     create_llm,
     create_metadata_enricher,
     create_query_transformer,
     create_rate_limiter,
     create_reranker,
+    create_response_synthesizer_agent,
     create_retriever,
     create_session_store,
     create_vector_store,
@@ -94,6 +98,14 @@ if config.rag_mode.lower() not in _VALID_RAG_MODES:
     logger.warning("Unknown RAG_MODE='%s'. Falling back to legacy. Valid: %s", config.rag_mode, _VALID_RAG_MODES)
 _knowledge_search_tool = create_knowledge_search_tool(retriever_port=_retriever)
 if config.rag_mode.lower() == "agentic":
+    _research_agent = create_legal_research_agent(retriever=_retriever, llm=_llm)
+    _citation_agent = create_citation_checker_agent(vector_store=_vector_store, llm=_llm)
+    _synthesis_agent = create_response_synthesizer_agent(llm=_llm)
+    _a2a_client = create_a2a_client(
+        research_agent=_research_agent,
+        citation_agent=_citation_agent,
+        synthesis_agent=_synthesis_agent,
+    )
     _agentic_service = create_agentic_service(
         vector_store=_vector_store,
         llm=_llm,
@@ -101,8 +113,9 @@ if config.rag_mode.lower() == "agentic":
         query_transformer=_query_transformer,
         knowledge_search_tool=_knowledge_search_tool,
         session_store=_session_store,
+        a2a_client=_a2a_client,
     )
-    logger.info("RAG_MODE=agentic: AgenticService initialized")
+    logger.info("RAG_MODE=agentic: AgenticService initialized with A2A client")
 else:
     logger.info("RAG_MODE=legacy: RAGService initialized (default)")
 

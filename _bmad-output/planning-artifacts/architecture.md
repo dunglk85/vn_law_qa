@@ -714,4 +714,560 @@ The `SupervisorAgent` still receives a callable and calls `tool.ainvoke({"query"
 mcp_enabled: bool = os.getenv("MCP_ENABLED", "false").lower() == "true"
 mcp_server_timeout: int = int(os.getenv("MCP_SERVER_TIMEOUT", "30"))
 mcp_max_restarts: int = int(os.getenv("MCP_MAX_RESTARTS", "3"))
+
+---
+
+## A2A Decoupling: Agent-to-Agent Protocol for Sub-Agent Orchestration
+
+### Decision
+
+Decouple the three sub-agents (LegalResearchAgent, CitationCheckerAgent, ResponseSynthesizerAgent) from the SupervisorAgent's in-process LangGraph graph using the **Agent-to-Agent (A2A) Protocol** v1.0. Each sub-agent becomes an independent A2A server exposing its capabilities via an Agent Card. The SupervisorAgent becomes an A2A client that sends Tasks to sub-agents over **JSON-RPC 2.0** (the standard A2A transport binding) with **SSE streaming** for task lifecycle events.
+
+This is complementary to the MCP decoupling: MCP decouples *tools* (agent-to-data), A2A decouples *agents* (agent-to-agent). Together they provide full process isolation for every component.
+
+### Context
+
+Currently, `SupervisorAgent` imports three sub-agents as Python classes and calls them in-process:
+
+```python
+from .legal_research_agent import LegalResearchAgent
+from .citation_checker_agent import CitationCheckerAgent
+from .response_synthesizer_agent import ResponseSynthesizerAgent
+```
+
+This means:
+- All four agents share a single process, GIL, and memory space
+- A crash in any sub-agent takes down the entire supervisor graph
+- No independent scaling — the right-sizing is for the heaviest agent
+- Cross-language agents are impossible (e.g., a Rust-based citation checker)
+- No protocol boundary — sub-agent internals are exposed to the supervisor
+
+With A2A, each sub-agent becomes a standalone service that the supervisor delegates work to via a standard protocol.
+
+### Architecture
+
+```
+▲ JSON-RPC 2.0 over HTTP (A2A Tasks with SSE streaming)
+│
+┌────────────────────────────────────────────────────────────────────┐
+│                    SupervisorAgent (A2A Client)                     │
+│  LangGraph state machine — nodes now send A2A SendMessage requests │
+│  instead of in-process await agent.run(...) calls                  │
+│                                                                    │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  A2AClientRouter                                              │  │
+│  │  • Resolves agent endpoints via env vars                      │  │
+│  │  • Sends Tasks via JSON-RPC tasks/sendMessage                 │  │
+│  │  • Receives SSE stream for task progress/completion           │  │
+│  │  • Handles retries (3x backoff), timeouts, fallbacks          │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└─────┬──────────────┬──────────────────┬────────────────────────────┘
+      │              │                  │
+      │ A2A Task     │ A2A Task         │ A2A Task
+      ▼              ▼                  ▼
+┌────────────┐ ┌──────────────┐ ┌──────────────────┐
+│ A2A Server │ │ A2A Server   │ │ A2A Server       │
+│ Legal      │ │ Citation     │ │ Response          │
+│ Research   │ │ Checker      │ │ Synthesizer       │
+│ Agent      │ │ Agent        │ │ Agent             │
+├────────────┤ ├──────────────┤ ├──────────────────┤
+│ Port 8101  │ │ Port 8102    │ │ Port 8103        │
+│ Agent Card │ │ Agent Card   │ │ Agent Card       │
+│ /agent-card│ │ /agent-card  │ │ /agent-card      │
+├────────────┤ ├──────────────┤ ├──────────────────┤
+│ FastAPI    │ │ FastAPI      │ │ FastAPI          │
+│ + A2AServer│ │ + A2AServer  │ │ + A2AServer      │
+└─────┬──────┘ └──────┬───────┘ └────────┬─────────┘
+      │               │                  │
+      ▼               ▼                  ▼
+ RetrieverPort   VectorStorePort      LLMPort
+```
+
+### Agent Card Design
+
+Each sub-agent publishes an Agent Card at `/.well-known/agent-card` (or `/agent-card`) using the A2A v1.0 schema. The card advertises skills, capabilities, and the endpoint URL.
+
+#### LegalResearchAgent Agent Card
+
+```json
+{
+  "name": "legal-research-agent",
+  "description": "Performs legal research: HyDE generation, sub-query decomposition, parallel retrieval, LLM relevance scoring, blended ranking.",
+  "version": "1.0.0",
+  "provider": {
+    "organization": "company-knowledge-assistant",
+    "url": ""
+  },
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false,
+    "stateful": true
+  },
+  "skills": [
+    {
+      "id": "legal_research",
+      "name": "Legal Research",
+      "description": "Given a legal query, returns ranked legal articles with relevance scores.",
+      "tags": ["legal", "retrieval", "ranking"],
+      "inputs": [
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Natural language legal question"
+        },
+        {
+          "name": "metadata",
+          "type": "object",
+          "description": "Optional filtering metadata (category, tenant_id)",
+          "optional": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "articles",
+          "type": "array",
+          "description": "Ranked list of Article objects with content, source, score"
+        }
+      ]
+    }
+  ],
+  "defaultInterface": {
+    "type": "rest",
+    "url": "http://legal-research:8101/",
+    "authentication": false
+  },
+  "interfaces": [
+    {
+      "type": "rest",
+      "url": "http://legal-research:8101/",
+      "authentication": false
+    }
+  ]
+}
+```
+
+#### CitationCheckerAgent Agent Card
+
+```json
+{
+  "name": "citation-checker-agent",
+  "description": "Three-gate hallucination firewall: existence check, relevance scoring, LLM contradiction detection.",
+  "version": "1.0.0",
+  "skills": [
+    {
+      "id": "citation_check",
+      "name": "Citation Verification",
+      "description": "Verifies legal citations against the knowledge base through a 3-gate pipeline.",
+      "inputs": [
+        {
+          "name": "articles",
+          "type": "array",
+          "description": "Articles to verify"
+        },
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Original query context"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "verified_citations",
+          "type": "array",
+          "description": "Citations that passed all three gates"
+        },
+        {
+          "name": "invalid_citations",
+          "type": "array",
+          "description": "Citations that failed existence check"
+        },
+        {
+          "name": "contradictions",
+          "type": "array",
+          "description": "Detected contradictions between citations"
+        },
+        {
+          "name": "consistency_score",
+          "type": "number",
+          "description": "Overall consistency score (0.0–1.0)"
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### ResponseSynthesizerAgent Agent Card
+
+```json
+{
+  "name": "response-synthesizer-agent",
+  "description": "Generates grounded Vietnamese legal responses from verified citations.",
+  "version": "1.0.0",
+  "skills": [
+    {
+      "id": "response_synthesis",
+      "name": "Response Synthesis",
+      "description": "Synthesizes a natural-language legal response from verified citations.",
+      "inputs": [
+        {
+          "name": "query",
+          "type": "string",
+          "description": "Original user question"
+        },
+        {
+          "name": "citations",
+          "type": "array",
+          "description": "Verified Citation objects"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "response",
+          "type": "string",
+          "description": "Generated legal response in Vietnamese"
+        },
+        {
+          "name": "metadata",
+          "type": "object",
+          "description": "Citation count, response length, optional error"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Task/Response Schemas
+
+Each sub-agent interaction follows the A2A `SendMessage` pattern over **JSON-RPC 2.0** with **SSE streaming**. The supervisor sends a JSON-RPC request to `POST /sendMessage` (or `POST /json-rpc` if using a single endpoint). The agent responds with an SSE stream of task status events (`working` → `completed`/`failed`), allowing the supervisor to observe progress without polling. For intermediate LangGraph nodes (HyDE generation, sub-query decomposition, retrieval), the agent emits `state: "working"` events with progress metadata.
+
+#### Legal Research: SendMessage Request
+
+```json
+POST http://legal-research:8101/sendMessage
+Content-Type: application/json
+A2A-Version: 1.0.0
+
+{
+  "jsonrpc": "2.0",
+  "method": "tasks/sendMessage",
+  "params": {
+    "id": "task-lr-<uuid>",
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "What are the labor law requirements for overtime pay in Vietnam?"
+        }
+      ]
+    },
+    "metadata": {
+      "category": "labor_law",
+      "tenant_id": "default"
+    }
+  }
+}
+```
+
+#### Legal Research: Response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "id": "task-lr-<uuid>",
+    "status": {
+      "state": "completed",
+      "timestamp": "2026-06-21T10:30:00Z"
+    },
+    "artifacts": [
+      {
+        "parts": [
+          {
+            "type": "data",
+            "data": {
+              "articles": [
+                {
+                  "id": "art-001",
+                  "title": "Labor Code Article 98",
+                  "content": "Overtime pay is calculated at 150% of normal wage on weekdays...",
+                  "source": "labor_code_2024.pdf",
+                  "score": 0.92
+                }
+              ],
+              "reasoning_steps": [
+                {"agent": "legal_research", "action": "hyde_generation", "status": "completed"},
+                {"agent": "legal_research", "action": "retrieve_articles", "result_count": 5}
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### Citation Check: SendMessage Request
+
+```json
+POST http://citation-checker:8102/sendMessage
+Content-Type: application/json
+A2A-Version: 1.0.0
+
+{
+  "jsonrpc": "2.0",
+  "method": "tasks/sendMessage",
+  "params": {
+    "id": "task-cc-<uuid>",
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "type": "data",
+          "data": {
+            "articles": [{"id": "art-001", "title": "...", "content": "...", "score": 0.92}],
+            "query": "What are the labor law requirements for overtime pay in Vietnam?"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+#### Response Synthesis: SendMessage Request
+
+```json
+POST http://response-synthesizer:8103/sendMessage
+Content-Type: application/json
+A2A-Version: 1.0.0
+
+{
+  "jsonrpc": "2.0",
+  "method": "tasks/sendMessage",
+  "params": {
+    "id": "task-rs-<uuid>",
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "type": "data",
+          "data": {
+            "query": "What are the labor law requirements...",
+            "citations": [
+              {"article_id": "art-001", "content": "Overtime pay is calculated at 150%...", "relevance_score": 0.88}
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+### Transport Decision: JSON-RPC 2.0 with SSE Streaming
+
+| Transport | Pros | Cons | Verdict |
+|-----------|------|------|---------|
+| **JSON-RPC 2.0 + SSE** | Standard A2A binding, `a2a-sdk` handles serialization, compact wire format | Requires SSE client on supervisor side | ✅ **Selected** |
+| **HTTP+JSON/REST** | Familiar, no SDK dependency | No native streaming, diverges from standard | ❌ Lost to JSON-RPC |
+| **gRPC** | Fast binary serialization, streaming | Protobuf toolchain, HTTP/2, overkill here | ❌ Premature optimization |
+
+**Recommendation**: JSON-RPC 2.0 over HTTP with SSE streaming for task lifecycle events. Each sub-agent runs as a lightweight FastAPI app with:
+- `POST /sendMessage` — initiate a task, returns an SSE stream of Task status events
+- `POST /json-rpc` — alternative single-endpoint JSON-RPC handler (optional, for SDK compatibility)
+- `GET /.well-known/agent-card` — serve Agent Card (optional `GET /agent-card` as alias)
+
+Each sub-agent wraps its existing `run()` method inside an A2A task handler. The internal LangGraph state machine within each sub-agent remains unchanged — only the entry point changes. The `a2a-sdk` provides `A2AServer` and `A2AClient` classes that handle JSON-RPC serialization, SSE framing, and error codes natively.
+
+**SSE Streaming Contract:**
+
+```
+→ POST /sendMessage  (JSON-RPC request body)
+← SSE stream:
+  event: task_status
+  data: {"id": "task-lr-<uuid>", "status": {"state": "working", "timestamp": "...", "metadata": {"node": "hyde_generation"}}}
+
+  event: task_status
+  data: {"id": "task-lr-<uuid>", "status": {"state": "working", "timestamp": "...", "metadata": {"node": "subquery_decomposition", "subqueries": 3}}}
+
+  event: task_status
+  data: {"id": "task-lr-<uuid>", "status": {"state": "working", "timestamp": "...", "metadata": {"node": "parallel_retrieval", "results": 5}}}
+
+  event: task_status
+  data: {"id": "task-lr-<uuid>", "status": {"state": "completed", "timestamp": "..."}}
+  event: task_artifact
+  data: {"id": "task-lr-<uuid>", "artifact": {...}}
+```
+
+The supervisor receives the stream via `a2a-sdk`'s `A2AClient.send_task()` which returns an async iterator of status events, ending with the final artifact.
+
+### Failure Handling
+
+| Failure | Behavior | Supervisor Action |
+|---------|----------|-------------------|
+| **A2A agent unreachable** (connection refused, DNS failure) | Log error, increment retry counter | Up to 3 retries with exponential backoff (1s, 2s, 4s); then proceed with degraded state (empty results) |
+| **Timeout** (no response within 30s) | Log warning, return timeout error | Treat same as unreachable; existing `asyncio.wait_for` pattern |
+| **Bad response** (missing required fields, invalid JSON) | Log error, discard response | Return empty result set; supervisor quality gate handles it downstream |
+| **Non-2xx HTTP** (500, 503, 429) | Log status code, backoff on 429 | Retry with backoff; after exhaustion, treat as degraded |
+| **Agent returns terminal 'failed' state** | Task.state = "failed", error message in artifact | Log error, proceed with empty results (same as current agent exception path) |
+| **Multiple sub-agents down** | Each fails independently | Supervisor continues with whatever results it has; quality gate at the end may produce a best-effort response |
+| **Stale Agent Card** (endpoint changed) | HTTP 404 on POST; supervisor re-fetches Agent Card | One retry with fresh Agent Card fetch; then degrade |
+
+**Critical invariant**: The supervisor *never* blocks waiting for a sub-agent. Every A2A SSE stream is consumed with `asyncio.wait_for` on the final artifact event, using a configurable timeout (default 60s). The supervisor can observe intermediate `working` events for logging/monitoring but does not require them to form the final response. The existing quality gate (`validate_quality`) at the end of the LangGraph handles partial or empty results gracefully.
+
+### LangGraph Integration
+
+The SupervisorAgent's LangGraph state machine stays in place. Only the node implementations change — they call A2A servers instead of in-process methods.
+
+**Before (current `execute_legal_research`):**
+```python
+async def execute_legal_research(self, state):
+    articles = await self.research_agent.run(state["query"])
+    tool_results = await self.knowledge_search_tool.ainvoke({"query": state["query"]})
+    return {"research_results": articles, ...}
+```
+
+**After (A2A-based with SSE streaming):**
+```python
+async def execute_legal_research(self, state):
+    async for event in self._a2a_client.send_task_stream(
+        agent="legal-research-agent",
+        payload={"query": state["query"], "metadata": state.get("metadata", {})},
+    ):
+        if event.type == "task_status" and event.status.state == "working":
+            logger.debug("Legal research progress: %s", event.status.metadata)
+        elif event.type == "task_status" and event.status.state == "completed":
+            articles = event.artifact.parts[0].data["articles"]
+        elif event.type == "task_status" and event.status.state == "failed":
+            logger.error("Legal research failed: %s", event.status.error)
+            articles = []
+    # knowledge_search_tool call unchanged (already MCP-decoupled)
+    return {"research_results": articles, ...}
+```
+
+The `_a2a_client` is an `A2AClientRouter` injected at construction time:
+
+```python
+class SupervisorAgent:
+    def __init__(self, ..., a2a_client: A2AClientRouter | None = None):
+        self._a2a_client = a2a_client or InProcessFallbackClient(
+            research_agent=research_agent,
+            citation_agent=citation_agent,
+            synthesis_agent=synthesis_agent,
+        )
+```
+
+The `InProcessFallbackClient` implements the same interface as `A2AClientRouter` but calls existing agents in-process — essential for the phased migration.
+
+### Deployment Topology
+
+#### Phase 1 — Same-Process (In-Process Fallback)
+
+```
+Single container: FastAPI app + SupervisorAgent + all sub-agents (current)
+Sub-agents remain in-process. A2A client layer wraps them via InProcessFallbackClient.
+No networking, no new containers.
+```
+
+#### Phase 2 — Separate Processes (Docker Compose)
+
+```
+container: app (FastAPI, Supervisor, A2A Client)
+container: legal-research-agent (FastAPI, Port 8101)
+container: citation-checker-agent (FastAPI, Port 8102)
+container: response-synthesizer-agent (FastAPI, Port 8103)
+```
+
+Each sub-agent container is a lightweight FastAPI app with:
+- Its own `Dockerfile` (or single multi-stage build)
+- Its own `requirements.txt` (minimal — just the A2A SDK and its specific dependencies)
+- Independent scaling via `docker-compose up --scale legal-research-agent=3`
+
+#### Phase 3 — Production (K8s)
+
+```
+Deployment: app (2+ replicas)
+Deployment: legal-research-agent (3+ replicas)
+Deployment: citation-checker-agent (2+ replicas)
+Deployment: response-synthesizer-agent (2+ replicas)
+Service: legal-research (ClusterIP, port 8101)
+Service: citation-checker (ClusterIP, port 8102)
+Service: response-synthesizer (ClusterIP, port 8103)
+```
+
+The A2A client in the supervisor resolves agent endpoints via **environment variables** (e.g., `A2A_LEGAL_RESEARCH_URL=http://legal-research:8101`). No service registry — each agent URL is configured at deployment time.
+
+### Phasing Plan
+
+| Phase | Scope | What changes | Risk |
+|-------|-------|-------------|------|
+| **0** | No A2A (current) | Nothing | — |
+| **1** | A2A client interface + `InProcessFallbackClient` | New `A2AClientRouter` abstraction; all existing code unchanged | Low — new abstraction only, no behavioral change |
+| **2** | LegalResearchAgent as A2A server | Extract to standalone FastAPI app + A2A agent card; supervisor points to it | Medium — first extraction, validates the pattern |
+| **3** | CitationCheckerAgent as A2A server | Same pattern as phase 2 | Low — proven pattern |
+| **4** | ResponseSynthesizerAgent as A2A server | Same pattern as phase 2 | Low — proven pattern |
+| **5** | Docker Compose update | Add three new services, wiring, health checks | Medium — multi-container orchestration |
+| **6** | Remove in-process code | Delete old imports, remove `InProcessFallbackClient` | Low — only after all agents verified in production |
+
+Each phase is independently ship-able. The system remains fully operational at every step.
+
+### New Dependencies
+
+```txt
+# requirements.txt (main app)
+a2a-sdk>=1.1,<2
+
+# Each sub-agent's requirements.txt
+a2a-sdk>=1.1,<2
+fastapi>=0.115.0,<0.116.0
+uvicorn>=0.30.0,<0.31.0
+```
+
+### New Config Variables (`app/config.py`)
+
+```python
+# A2A agent URLs (empty = use InProcessFallbackClient)
+a2a_legal_research_url: str = _str_env("A2A_LEGAL_RESEARCH_URL", "")
+a2a_citation_checker_url: str = _str_env("A2A_CITATION_CHECKER_URL", "")
+a2a_response_synthesizer_url: str = _str_env("A2A_RESPONSE_SYNTHESIZER_URL", "")
+a2a_task_timeout: int = _int_env("A2A_TASK_TIMEOUT", 60)
+a2a_max_retries: int = _int_env("A2A_MAX_RETRIES", 3)
+```
+
+### A2A vs MCP: Where Each Applies
+
+```
+                MCP                             A2A
+   ┌─────────────────────────┐     ┌──────────────────────────┐
+   │  Agent → Tool           │     │  Agent → Agent           │
+   │  "Find this data"       │     │  "Do this task"          │
+   │                         │     │                          │
+   │  knowledge_search       │     │  legal_research          │
+   │  (RetrieverPort)        │     │  citation_check          │
+   │                         │     │  response_synthesis      │
+   │  stdio (subprocess)     │     │  JSON-RPC 2.0 + SSE     │
+   │  Single tool call       │     │  Complex task lifecycle  │
+   │  LangChain compatible   │     │  Framework-agnostic      │
+   └─────────────────────────┘     └──────────────────────────┘
+```
+
+Both are governed by the Linux Foundation Agentic AI Foundation. Both are production-stable. Both are used here.
+
+### Acceptance Tests
+
+| Test | What it verifies |
+|------|-----------------|
+| `test_a2a_client_router` | A2AClientRouter sends correct HTTP requests and parses responses |
+| `test_a2a_inprocess_fallback` | InProcessFallbackClient returns same results as direct agent calls |
+| `test_a2a_unreachable_agent` | When A2A agent is down, supervisor degrades gracefully (empty results) |
+| `test_a2a_timeout` | Slow A2A agent causes timeout, supervisor continues |
+| `test_a2a_bad_response` | Malformed A2A response yields empty results, not crash |
+| `test_a2a_legal_research_endpoint` | Legal research agent serves valid Agent Card and responds to SendMessage |
+| `test_a2a_citation_check_endpoint` | Citation checker agent serves valid Agent Card |
+| `test_a2a_response_synthesis_endpoint` | Response synthesizer agent serves valid Agent Card |
+| `test_a2a_supervisor_end_to_end` | Full chain with A2A agents produces same answer format as in-process |
 ```

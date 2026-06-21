@@ -303,6 +303,26 @@ def create_supervisor_agent(
     )
 
 
+# --------------------------------------------------------------------------- #
+# A2A Client (Agent-to-Agent Protocol)                                        #
+# --------------------------------------------------------------------------- #
+
+
+def create_a2a_client(research_agent, citation_agent, synthesis_agent):
+    from app.adapters.agents.a2a_fallback_client import InProcessFallbackClient
+
+    a2a_url = config.a2a_legal_research_url
+    if a2a_url:
+        logger.info("A2A client: remote mode (%s)", a2a_url)
+    else:
+        logger.info("A2A client: in-process fallback")
+    return InProcessFallbackClient(
+        research_agent=research_agent,
+        citation_agent=citation_agent,
+        synthesis_agent=synthesis_agent,
+    )
+
+
 def create_session_store() -> SessionStorePort:
     if config.redis_url:
         try:

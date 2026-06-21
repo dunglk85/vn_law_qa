@@ -138,6 +138,9 @@ class TestArchitecture(unittest.TestCase):
 
             imports, _ = self._get_imports_and_classes(file_path)
             for imp, line in imports:
+                # Allow adapters to import A2A interface (pure abstract, no business logic)
+                if imp == "app.core.a2a_client":
+                    continue
                 forbidden_prefixes = ["app.core", "app.api"]
                 for prefix in forbidden_prefixes:
                     if imp == prefix or imp.startswith(prefix + "."):

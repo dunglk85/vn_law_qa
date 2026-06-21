@@ -33,6 +33,7 @@ class AgenticService:
         knowledge_search_tool=None,
         supervisor=None,
         session_store: SessionStorePort | None = None,
+        a2a_client=None,
     ) -> None:
         self._vector_store = vector_store
         self._llm = llm
@@ -58,6 +59,7 @@ class AgenticService:
                 synthesis_agent=ResponseSynthesizerAgent(chat_model),
                 llm=chat_model,
                 knowledge_search_tool=knowledge_search_tool,
+                a2a_client=a2a_client,
             )
         self._warmed_up = False
 
@@ -203,9 +205,11 @@ def create_agentic_service(
     query_transformer: QueryTransformerPort,
     knowledge_search_tool=None,
     session_store: SessionStorePort | None = None,
+    a2a_client=None,
 ) -> AgenticService:
     return AgenticService(
         vector_store, llm, retriever, query_transformer,
         knowledge_search_tool=knowledge_search_tool,
         session_store=session_store,
+        a2a_client=a2a_client,
     )
