@@ -1,0 +1,90 @@
+name: Law Crawler — Weekly Data Update
+
+on:
+  schedule:
+    # Weekly on Sunday at 02:00 UTC
+    - cron: "0 2 * * 0"
+  workflow_dispatch:
+    inputs:
+      skip_phap_dien:
+        description: "Skip法Điển crawl (local files unchanged)"
+        type: boolean
+        default: false
+
+env:
+  LAW_DB_HOST: "127.0.0.1"
+  LAW_DB_PORT: "3306"
+  LAW_DB_USER: "root"
+  LAW_DB_PASSWORD: "law_crawler_ci"
+  LAW_DB_NAME: "law"
+
+jobs:
+  crawl:
+    name: Run crawlers
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ env.LAW_DB_PASSWORD }}
+          MYSQL_DATABASE: ${{ env.LAW_DB_NAME }}
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          cd law-crawler
+          pip install -r requirements.txt
+
+      - name: Wait for MySQL
+        run: |
+          until mysqladmin ping -h ${{ env.LAW_DB_HOST }} -u ${{ env.LAW_DB_USER }} -p${{ env.LAW_DB_PASSWORD }} --silent; do
+            echo "Waiting for MySQL..."
+            sleep 2
+          done
+          echo "MySQL is ready"
+
+      - name: Crawl Pháp Điển
+        if: ${{ !inputs.skip_phap_dien }}
+        run: |
+          cd law-crawler
+          python main.py
+
+      - name: Crawl VBQPPL
+        run: |
+          cd law-crawler
+          python document-crawler/main.py
+
+      - name: Split documents
+        run: |
+          cd law-crawler
+          python document-crawler/split_document.py
+
+      - name: Export data dump
+        if: success()
+        run: |
+          mysqldump -h ${{ env.LAW_DB_HOST }} -u ${{ env.LAW_DB_USER }} -p${{ env.LAW_DB_PASSWORD }} ${{ env.LAW_DB_NAME }} > law_dump.sql
+
+      - name: Upload data artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: law-data-${{ github.run_id }}
+          path: law_dump.sql
+          retention-days: 30

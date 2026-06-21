@@ -280,15 +280,15 @@ def insert_nodes() -> None:
                 PDMucLienQuan.create(
                     dieu_id1=ref["dieu_id1"], dieu_id2=ref["dieu_id2"]
                 )
+            logger.info(
+                "Inserted liên quan %s - %s", ref["dieu_id1"], ref["dieu_id2"]
+            )
         except IntegrityError:
             logger.warning(
                 "Không thể insert liên quan %s - %s",
                 ref["dieu_id1"],
                 ref["dieu_id2"],
             )
-        logger.info(
-            "Inserted liên quan %s - %s", ref["dieu_id1"], ref["dieu_id2"]
-        )
 
     logger.info("Inserted tất cả nodes")
 

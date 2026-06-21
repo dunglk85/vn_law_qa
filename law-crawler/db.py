@@ -9,6 +9,16 @@ from peewee import MySQLDatabase
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_PORT = 3306
+
+
+def _parse_port(value: str) -> int:
+    """Parse port string, falling back to default on invalid input."""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return _DEFAULT_PORT
+
 
 def mysql_config() -> dict:
     """Read MySQL connection parameters from environment variables.
@@ -20,7 +30,7 @@ def mysql_config() -> dict:
         "user": os.getenv("LAW_DB_USER", "root"),
         "password": os.getenv("LAW_DB_PASSWORD", ""),
         "host": os.getenv("LAW_DB_HOST", "localhost"),
-        "port": int(os.getenv("LAW_DB_PORT", "3306")),
+        "port": _parse_port(os.getenv("LAW_DB_PORT", "3306")),
         "database": os.getenv("LAW_DB_NAME", "law"),
     }
 
