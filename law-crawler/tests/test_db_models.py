@@ -76,7 +76,7 @@ def test_model_table_names():
     )
 
     assert PDChuDe._meta.table_name == "pdchude"
-    assert PDDeMuc._meta.table_name == "pdemuc"
+    assert PDDeMuc._meta.table_name == "pddemuc"
     assert PDChuong._meta.table_name == "pdchuong"
     assert PDDieu._meta.table_name == "pddieu"
     assert PDTable._meta.table_name == "pdtable"

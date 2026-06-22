@@ -7,7 +7,15 @@ import os
 
 from peewee import MySQLDatabase
 
-logger = logging.getLogger(__name__)
+
+def setup_logging(name: str | None = None) -> logging.Logger:
+    """Configure and return a logger with consistent formatting."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+    return logging.getLogger(name or __name__)
+
 
 _DEFAULT_PORT = 3306
 
@@ -21,11 +29,7 @@ def _parse_port(value: str) -> int:
 
 
 def mysql_config() -> dict:
-    """Read MySQL connection parameters from environment variables.
-
-    Returns:
-        Dict with keys: user, password, host, port, database.
-    """
+    """Read MySQL connection parameters from environment variables."""
     return {
         "user": os.getenv("LAW_DB_USER", "root"),
         "password": os.getenv("LAW_DB_PASSWORD", ""),
@@ -41,8 +45,8 @@ def get_connection_url() -> str:
     return f"mysql://{cfg['user']}:{cfg['password']}@{cfg['host']}:{cfg['port']}/{cfg['database']}"
 
 
-def get_db() -> MySQLDatabase:
-    """Get a MySQL database instance from current environment (lazy)."""
+def get_peewee_db() -> MySQLDatabase:
+    """Get a Peewee MySQLDatabase instance from current environment (lazy)."""
     cfg = mysql_config()
     return MySQLDatabase(
         database=cfg["database"],
@@ -53,27 +57,28 @@ def get_db() -> MySQLDatabase:
     )
 
 
-# Module-level instance for models (created at import time from env vars).
-_db_config = mysql_config()
-DATABASE = f"mysql://{_db_config['user']}:{_db_config['password']}@{_db_config['host']}:{_db_config['port']}/{_db_config['database']}"
+# Module-level Peewee instance (created from env vars at import time).
+# Uses parameterized constructor — password is never stored as a plaintext URL.
+_cfg = mysql_config()
 db = MySQLDatabase(
-    database=_db_config["database"],
-    user=_db_config["user"],
-    password=_db_config["password"],
-    host=_db_config["host"],
-    port=_db_config["port"],
+    database=_cfg["database"],
+    user=_cfg["user"],
+    password=_cfg["password"],
+    host=_cfg["host"],
+    port=_cfg["port"],
 )
 
 
 def connect_db() -> None:
     """Connect to database with logging."""
+    logger = logging.getLogger(__name__)
     try:
         db.connect()
         logger.info(
             "Connected to MySQL at %s:%s/%s",
-            _db_config["host"],
-            _db_config["port"],
-            _db_config["database"],
+            _cfg["host"],
+            _cfg["port"],
+            _cfg["database"],
         )
     except Exception as exc:
         logger.error("Failed to connect to MySQL: %s", exc)
@@ -82,6 +87,25 @@ def connect_db() -> None:
 
 def close_db() -> None:
     """Close database connection with logging."""
+    logger = logging.getLogger(__name__)
     if not db.is_closed():
         db.close()
         logger.info("Database connection closed")
+
+
+get_db = get_peewee_db  # backward-compatible alias
+
+
+def get_sqlalchemy_engine():
+    """Get a SQLAlchemy engine configured from environment variables.
+
+    Returns the engine unconnected; connection happens lazily on first use.
+    """
+    from sqlalchemy import create_engine
+
+    cfg = mysql_config()
+    url = (
+        f"mysql+mysqlconnector://{cfg['user']}:{cfg['password']}"
+        f"@{cfg['host']}:{cfg['port']}/{cfg['database']}"
+    )
+    return create_engine(url)

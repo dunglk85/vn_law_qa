@@ -4,7 +4,6 @@ Parses HTML law documents from phap-dien/ directory and stores
 structured data in MySQL via Peewee ORM.
 """
 import json
-import logging
 import os
 import uuid
 from pathlib import Path
@@ -12,7 +11,7 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 from peewee import IntegrityError
 
-from db import db
+from db import db, setup_logging
 from helper import convert_roman_to_num, extract_input
 from models.models import (
     PDChuDe,
@@ -24,11 +23,7 @@ from models.models import (
     PDTable,
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging(__name__)
 
 PHAP_DIEN_DIR = Path(__file__).parent / "phap-dien"
 CHECKPOINT = os.getenv("LAW_CHECKPOINT", "")

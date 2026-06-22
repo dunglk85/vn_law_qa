@@ -2,31 +2,20 @@
 
 Fetches legal document full text from vbpl.vn and stores in MySQL.
 """
-import logging
-import os
 import re
-import time
 import sys
+import time
 from pathlib import Path
 
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-from sqlalchemy import create_engine
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from db import mysql_config
+from db import get_sqlalchemy_engine, setup_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-logger = logging.getLogger(__name__)
-
-_cfg = mysql_config()
-engine = create_engine(
-    f"mysql+mysqlconnector://{_cfg['user']}:{_cfg['password']}@{_cfg['host']}:{_cfg['port']}/{_cfg['database']}"
-)
+logger = setup_logging(__name__)
+engine = get_sqlalchemy_engine()
 
 VBPL_BASE_URL = "https://vbpl.vn/TW/Pages/vbpq-toanvan.aspx"
 REQUEST_TIMEOUT = 10
@@ -42,21 +31,35 @@ def get_item_id(url: str | None) -> str | None:
 
 
 def fetch_document(item_id: str) -> str | None:
-    """Fetch full text of a legal document by ItemID."""
+    """Fetch full text of a legal document by ItemID with retries."""
     url = f"{VBPL_BASE_URL}?ItemID={item_id}"
-    try:
-        response = requests.get(url, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, "html.parser")
-        div_text = soup.find_all("div", class_="fulltext")
-        if not div_text:
-            logger.warning("No fulltext div for ItemID %s", item_id)
-            return None
-        noidung = div_text[0].find_all("div")[1]
-        return str(noidung)
-    except requests.RequestException as exc:
-        logger.error("Failed to fetch ItemID %s: %s", item_id, exc)
-        return None
+    for attempt in range(1, 4):
+        try:
+            response = requests.get(url, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, "html.parser")
+            div_text = soup.find_all("div", class_="fulltext")
+            if not div_text:
+                logger.warning("No fulltext div for ItemID %s", item_id)
+                return None
+            inner_divs = div_text[0].find_all("div")
+            if len(inner_divs) < 2:
+                logger.warning(
+                    "Unexpected HTML structure for ItemID %s: expected >=2 inner divs, got %d",
+                    item_id,
+                    len(inner_divs),
+                )
+                return None
+            return str(inner_divs[1])
+        except requests.RequestException as exc:
+            logger.warning(
+                "Attempt %d/3 failed for ItemID %s: %s", attempt, item_id, exc
+            )
+            if attempt < 3:
+                time.sleep(2**attempt)
+            else:
+                logger.error("All retries failed for ItemID %s", item_id)
+                return None
 
 
 def save_data(list_id: list[str], list_noidung: list[str]) -> None:

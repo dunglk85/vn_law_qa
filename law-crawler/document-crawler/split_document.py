@@ -3,27 +3,17 @@
 Reads full-text HTML from MySQL, parses into chapters (Chương)
 and articles (Điều), stores in vb_chimuc table.
 """
-import logging
 import sys
 from pathlib import Path
 
 import pandas as pd
 from bs4 import BeautifulSoup
-from sqlalchemy import create_engine
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from db import mysql_config
+from db import get_sqlalchemy_engine, setup_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-logger = logging.getLogger(__name__)
-
-_cfg = mysql_config()
-engine = create_engine(
-    f"mysql+mysqlconnector://{_cfg['user']}:{_cfg['password']}@{_cfg['host']}:{_cfg['port']}/{_cfg['database']}"
-)
+logger = setup_logging(__name__)
+engine = get_sqlalchemy_engine()
 
 
 def split_document(id_vb: str, contents: str, start_id: int) -> tuple[list[dict], int]:
@@ -64,7 +54,7 @@ def split_document(id_vb: str, contents: str, start_id: int) -> tuple[list[dict]
                 text = ""
             id_chuong = current_id
             control = 1
-        elif line.startswith("Đi"):
+        elif line.startswith("Điều") or line.startswith("ĐIỀU"):
             if text:
                 flush(text, control, 2)
                 text = ""
@@ -87,7 +77,9 @@ def main() -> None:
     logger.info("Found %d documents to split", len(df))
 
     all_chi_muc: list[dict] = []
-    current_id = 3012
+    max_id = pd.read_sql("SELECT COALESCE(MAX(id), 0) AS max_id FROM vb_chimuc;", con=engine)
+    current_id = int(max_id.iloc[0]["max_id"]) + 1
+    logger.info("Starting split at id=%d", current_id)
 
     for j in range(len(df)):
         id_vb = df.iloc[j]["id"]
