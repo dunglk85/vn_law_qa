@@ -1,0 +1,69 @@
+stages:
+  # ── Bronze ──────────────────────────────────────────────
+  ingest_phap_dien:
+    cmd: python -m src.bronze.phap_dien
+    deps:
+      - phap-dien
+      - src/bronze/phap_dien.py
+      - helper.py
+    params:
+      - checkpoint
+    outs:
+      - data/bronze/phap_dien
+
+  ingest_vbqppl:
+    cmd: python -m src.bronze.vbqppl
+    deps:
+      - data/bronze/phap_dien/dieu.parquet
+      - src/bronze/vbqppl.py
+    outs:
+      - data/bronze/vbqppl
+
+  # ── Silver ──────────────────────────────────────────────
+  clean_phap_dien:
+    cmd: python -m src.silver.phap_dien
+    deps:
+      - data/bronze/phap_dien
+      - src/silver/phap_dien.py
+    outs:
+      - data/silver/phap_dien
+
+  split_vbqppl:
+    cmd: python -m src.silver.vbqppl
+    deps:
+      - data/bronze/vbqppl
+      - src/silver/vbqppl.py
+    outs:
+      - data/silver/vbqppl
+
+  quality_checks:
+    cmd: python -m src.silver.quality
+    deps:
+      - data/silver
+      - src/silver/quality.py
+    metrics:
+      - metrics/quality.json:
+          cache: false
+
+  # ── Gold ────────────────────────────────────────────────
+  build_documents:
+    cmd: python -m src.gold.documents
+    deps:
+      - data/silver
+      - src/gold/documents.py
+    outs:
+      - data/gold/law_documents.parquet
+      - data/gold/vbqppl_documents.parquet
+
+  chunk_documents:
+    cmd: python -m src.gold.chunks
+    deps:
+      - data/gold/law_documents.parquet
+      - data/gold/vbqppl_documents.parquet
+      - src/gold/chunks.py
+    params:
+      - chunk_size
+      - chunk_overlap
+    outs:
+      - data/gold/law_document_chunks.parquet
+      - data/gold/vbqppl_chunks.parquet

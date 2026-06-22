@@ -162,4 +162,11 @@ cython_debug/
 
 # Pháp Điển Việt Nam
 phap-dien/
+
+# Medallion data — tracked by DVC, not git
+data/
+
+# DVC
+.dvc/
+dvc.lock
 ```
