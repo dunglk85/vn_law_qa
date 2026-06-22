@@ -23,6 +23,11 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
     if len(text) <= chunk_size:
         return [text]
 
+    if chunk_size <= overlap:
+        raise ValueError(
+            f"chunk_size ({chunk_size}) must be greater than overlap ({overlap})"
+        )
+
     chunks: list[str] = []
     start = 0
     while start < len(text):

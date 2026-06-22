@@ -196,6 +196,8 @@ def ingest_nodes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFra
 def main() -> None:
     logger.info("=== Bronze: Pháp Điển ingestion ===")
 
+    BRONZE_PHAP_DIEN.mkdir(parents=True, exist_ok=True)
+
     df_chude = ingest_chude()
     df_chude.to_parquet(BRONZE_PHAP_DIEN / "chude.parquet", index=False)
     logger.info("Wrote %d chủ đề to bronze", len(df_chude))

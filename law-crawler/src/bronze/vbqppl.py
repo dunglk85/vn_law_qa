@@ -30,15 +30,19 @@ logger = setup_logging(__name__)
 def get_item_id(url: str | None) -> str | None:
     if url is None:
         return None
-    match = re.search(r"ItemID=(\d+).*#(.*)", url)
+    match = re.search(r"ItemID=(\d+)", url)
     return match.group(1) if match else None
+
+
+_USER_AGENT = "law-crawler/1.0 (research project; contact@example.com)"
 
 
 def fetch_document(item_id: str) -> str | None:
     url = f"{VBPL_BASE_URL}?ItemID={item_id}"
+    headers = {"User-Agent": _USER_AGENT}
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            response = requests.get(url, timeout=REQUEST_TIMEOUT)
+            response = requests.get(url, timeout=REQUEST_TIMEOUT, headers=headers)
             response.raise_for_status()
             soup = BeautifulSoup(response.content, "html.parser")
             div_text = soup.find_all("div", class_="fulltext")

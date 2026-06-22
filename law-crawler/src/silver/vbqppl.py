@@ -3,6 +3,7 @@
 Reads raw VBQPPL HTML from bronze, parses into structured
 chapters (Chương) and articles (Điều), writes to silver.
 """
+import re
 import sys
 from pathlib import Path
 
@@ -13,6 +14,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.settings import BRONZE_VBQPPL, SILVER_VBQPPL, setup_logging
 
 logger = setup_logging(__name__)
+
+_CHAPTER_RE = re.compile(r"^Chương\b", re.IGNORECASE)
+_ARTICLE_RE = re.compile(r"^Điều\b", re.IGNORECASE)
 
 
 def split_document(id_vb: str, contents: str, start_id: int) -> tuple[list[dict], int]:
@@ -45,13 +49,13 @@ def split_document(id_vb: str, contents: str, start_id: int) -> tuple[list[dict]
         current_id += 1
 
     for line in texts:
-        if line.startswith("Chương") or line.startswith("CHƯƠNG"):
+        if _CHAPTER_RE.match(line):
             if text:
                 flush(text, control)
                 text = ""
             id_chuong = current_id
             control = 1
-        elif line.startswith("Điều") or line.startswith("ĐIỀU"):
+        elif _ARTICLE_RE.match(line):
             if text:
                 flush(text, control)
                 text = ""
@@ -93,7 +97,10 @@ def main() -> None:
 
     if all_chi_muc:
         df_out = pd.DataFrame(all_chi_muc)
-        df_out.to_parquet(SILVER_VBQPPL / "vb_chimuc.parquet", index=False)
+        out_path = SILVER_VBQPPL / "vb_chimuc.parquet"
+        tmp_path = out_path.with_suffix(".tmp")
+        df_out.to_parquet(tmp_path, index=False)
+        tmp_path.replace(out_path)
         logger.info("Saved %d split records", len(df_out))
 
     logger.info("Silver VBQPPL done")

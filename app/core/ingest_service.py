@@ -9,6 +9,7 @@ This module only handles loading, embedding, and storage.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from langchain_core.documents import Document
@@ -19,6 +20,8 @@ from app.ports.retriever import RetrieverPort
 from app.ports.vector_store import VectorStorePort
 
 logger = logging.getLogger(__name__)
+
+MAX_CHUNK_CHARS_WARN = 4000
 
 
 def _load_docs(
@@ -67,11 +70,21 @@ async def run_ingest(
     Returns:
         dict with 'documents' and 'chunks' counts.
     """
-    docs = _load_docs(loader=loader, data_dir=data_dir, tenant_id=tenant_id)
+    loop = asyncio.get_running_loop()
+    docs = await loop.run_in_executor(
+        None, _load_docs, loader, data_dir, tenant_id,
+    )
 
     if not docs:
         logger.error("INGEST ERROR: no documents loaded from %s", data_dir)
         return {"documents": 0, "chunks": 0}
+
+    oversized = sum(1 for d in docs if len(d.page_content) > MAX_CHUNK_CHARS_WARN)
+    if oversized:
+        logger.warning(
+            "INGEST WARNING: %d chunks exceed %d chars — may exceed embedding model context window",
+            oversized, MAX_CHUNK_CHARS_WARN,
+        )
 
     try:
         await vector_store.add_documents(docs)
@@ -79,7 +92,7 @@ async def run_ingest(
         logger.exception("INGEST ERROR: embedding/storage failed")
         raise
 
-    logger.info("INGEST: %d chunks stored.", len(docs))
+    logger.info("INGEST: %d documents stored.", len(docs))
 
     await vector_store.create_index()
     retriever.build_index(docs)

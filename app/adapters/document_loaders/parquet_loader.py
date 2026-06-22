@@ -57,22 +57,38 @@ class ParquetLoaderAdapter(DocumentLoaderPort):
             return []
 
         docs: list[Document] = []
+        files_found = 0
 
         # Load law document chunks
         law_chunks_path = data_path / "law_document_chunks.parquet"
         if law_chunks_path.exists():
-            docs.extend(self._load_law_chunks(law_chunks_path))
+            files_found += 1
+            law_docs = self._load_law_chunks(law_chunks_path)
+            if not law_docs:
+                logger.warning(
+                    "law_document_chunks.parquet exists but contains no valid documents"
+                )
+            docs.extend(law_docs)
         else:
             logger.info("No law_document_chunks.parquet found in %s", data_dir)
 
         # Load VBQPPL chunks
         vbqppl_chunks_path = data_path / "vbqppl_chunks.parquet"
         if vbqppl_chunks_path.exists():
-            docs.extend(self._load_vbqppl_chunks(vbqppl_chunks_path))
+            files_found += 1
+            vb_docs = self._load_vbqppl_chunks(vbqppl_chunks_path)
+            if not vb_docs:
+                logger.warning(
+                    "vbqppl_chunks.parquet exists but contains no valid documents"
+                )
+            docs.extend(vb_docs)
         else:
             logger.info("No vbqppl_chunks.parquet found in %s", data_dir)
 
-        logger.info("Loaded %d documents from Parquet files", len(docs))
+        if files_found == 0:
+            logger.warning("No Parquet files found in %s", data_dir)
+        else:
+            logger.info("Loaded %d documents from Parquet files", len(docs))
         return docs
 
     def _load_law_chunks(self, path: Path) -> list[Document]:
@@ -88,7 +104,12 @@ class ParquetLoaderAdapter(DocumentLoaderPort):
         docs: list[Document] = []
         for _, row in df.iterrows():
             text_val = row.get("text")
-            text_str = str(text_val) if pd.notna(text_val) and text_val is not None else ""
+            if pd.isna(text_val) or text_val is None:
+                text_str = ""
+            else:
+                text_str = str(text_val)
+                if text_str == "<NA>":
+                    text_str = ""
             doc = Document(
                 page_content=text_str,
                 metadata={
@@ -121,7 +142,12 @@ class ParquetLoaderAdapter(DocumentLoaderPort):
         docs: list[Document] = []
         for _, row in df.iterrows():
             text_val = row.get("text")
-            text_str = str(text_val) if pd.notna(text_val) and text_val is not None else ""
+            if pd.isna(text_val) or text_val is None:
+                text_str = ""
+            else:
+                text_str = str(text_val)
+                if text_str == "<NA>":
+                    text_str = ""
             parent_val = row.get("parent_id")
             parent_str = str(parent_val) if pd.notna(parent_val) and parent_val is not None else ""
             doc = Document(

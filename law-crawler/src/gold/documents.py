@@ -78,7 +78,8 @@ def build_phap_dien_documents() -> pd.DataFrame:
             f"Đề mục: {row.get('demuc_ten', '')}\n"
             f"Chương: {row.get('chuong_ten', '')}\n"
             f"Điều: {row.get('ten', '')}\n"
-            f"{row.get('noidung', '')}"
+            + (f"VBQPPL: {row.get('vbqppl', '')}\n" if row.get("vbqppl") else "")
+            + f"{row.get('noidung', '')}"
         ),
         axis=1,
     )

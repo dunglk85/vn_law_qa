@@ -106,12 +106,11 @@ def validate_cross_references(df_lienquan: pd.DataFrame, df_dieu: pd.DataFrame) 
         return {"total_refs": 0, "valid_refs": 0, "orphan_refs": 0}
 
     valid_mapc = set(df_dieu["mapc"].dropna())
-    df_lienquan["_valid1"] = df_lienquan["dieu_id1"].isin(valid_mapc)
-    df_lienquan["_valid2"] = df_lienquan["dieu_id2"].isin(valid_mapc)
-    df_lienquan["is_valid"] = df_lienquan["_valid1"] & df_lienquan["_valid2"]
+    valid1 = df_lienquan["dieu_id1"].isin(valid_mapc)
+    valid2 = df_lienquan["dieu_id2"].isin(valid_mapc)
 
     total = len(df_lienquan)
-    valid = int(df_lienquan["is_valid"].sum())
+    valid = int((valid1 & valid2).sum())
     return {"total_refs": total, "valid_refs": valid, "orphan_refs": total - valid}
 
 

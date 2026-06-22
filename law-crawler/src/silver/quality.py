@@ -20,8 +20,13 @@ logger = setup_logging(__name__)
 def _read_silver(subdir: Path, name: str) -> pd.DataFrame:
     path = subdir / f"{name}.parquet"
     if not path.exists():
+        logger.warning("Silver file not found: %s", path)
         return pd.DataFrame()
-    return pd.read_parquet(path)
+    try:
+        return pd.read_parquet(path)
+    except Exception as exc:
+        logger.error("Failed to read silver file %s: %s", path, exc)
+        return pd.DataFrame()
 
 
 def check_phap_dien() -> dict:

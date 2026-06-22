@@ -1,4 +1,6 @@
 """Integration tests for API endpoints"""
+import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,6 +12,58 @@ from app.api import app
 @pytest.fixture
 def client():
     return TestClient(app)
+
+
+class TestParquetLoader:
+    def test_loads_parquet_chunks(self):
+        pd = pytest.importorskip("pandas", reason="pandas not installed")
+        from app.adapters.document_loaders.parquet_loader import ParquetLoaderAdapter
+
+        with tempfile.TemporaryDirectory() as tmp:
+            df = pd.DataFrame([{
+                "chunk_id": "a_c0", "article_id": "a", "title": "Article 1",
+                "chude": "Civil", "demuc": "Section 1", "chuong": "Chapter 1",
+                "chunk_index": 0, "total_chunks": 1, "text": "Content here",
+            }])
+            df.to_parquet(Path(tmp) / "law_document_chunks.parquet", index=False)
+
+            loader = ParquetLoaderAdapter()
+            docs = loader.load(tmp)
+            assert len(docs) == 1
+            assert docs[0].page_content == "Content here"
+            assert docs[0].metadata["chunk_id"] == "a_c0"
+
+    def test_loads_empty_directory_gracefully(self):
+        from app.adapters.document_loaders.parquet_loader import ParquetLoaderAdapter
+
+        with tempfile.TemporaryDirectory() as tmp:
+            loader = ParquetLoaderAdapter()
+            docs = loader.load(tmp)
+            assert docs == []
+
+    def test_loads_missing_directory(self):
+        from app.adapters.document_loaders.parquet_loader import ParquetLoaderAdapter
+
+        loader = ParquetLoaderAdapter()
+        docs = loader.load("/nonexistent/path/12345")
+        assert docs == []
+
+    def test_handles_pd_na_text(self):
+        pd = pytest.importorskip("pandas", reason="pandas not installed")
+        from app.adapters.document_loaders.parquet_loader import ParquetLoaderAdapter
+
+        with tempfile.TemporaryDirectory() as tmp:
+            df = pd.DataFrame([{
+                "chunk_id": "x_c0", "article_id": "x", "title": "T",
+                "chude": "C", "demuc": "D", "chuong": "Ch",
+                "chunk_index": 0, "total_chunks": 1, "text": pd.NA,
+            }])
+            df.to_parquet(Path(tmp) / "law_document_chunks.parquet", index=False)
+
+            loader = ParquetLoaderAdapter()
+            docs = loader.load(tmp)
+            assert len(docs) == 1
+            assert docs[0].page_content == ""
 
 
 @pytest.fixture

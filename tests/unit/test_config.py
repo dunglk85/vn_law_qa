@@ -83,7 +83,17 @@ class TestAppConfigDefaults:
         assert hasattr(config, "reranker_type")
         assert hasattr(config, "cache_type")
         assert hasattr(config, "retriever_type")
+        assert hasattr(config, "query_transformer_type")
         assert hasattr(config, "rag_mode")
+        assert hasattr(config, "data_dir")
+
+    def test_config_removed_fields(self):
+        from app.config import config
+
+        assert not hasattr(config, "chunker_type")
+        assert not hasattr(config, "metadata_enricher_type")
+        assert not hasattr(config, "chunk_size")
+        assert not hasattr(config, "chunk_overlap")
 
     def test_config_vector_store_default(self):
         from app.config import config

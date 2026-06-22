@@ -58,4 +58,5 @@ jobs:
         with:
           name: law-metrics-${{ github.run_id }}
           path: law-crawler/metrics/quality.json
+          if-no-files-found: warn
           retention-days: 30
