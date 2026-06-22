@@ -7,9 +7,11 @@ Orchestrates: analyze_query → plan_tasks → legal_research
 retry_count is incremented inside execute_citation_check (a node) so
 LangGraph persists it. Routers are pure functions — never mutate state.
 """
+from __future__ import annotations
+
 import logging
 import time
-from typing import Annotated, Any, AsyncIterator, TypedDict
+from typing import Annotated, Any, TypedDict
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -18,8 +20,17 @@ from langgraph.graph.message import add_messages
 
 from app.config import config
 from app.core.a2a_client import A2AClientRouter
+from app.core.models import (
+    MAX_RETRIES,
+    QUALITY_THRESHOLD,
+    Article,
+    Citation,
+    Task,
+    format_citations,
+    llm_ainvoke,
+    parse_json,
+)
 from app.core.retry import retry_with_backoff
-from app.core.models import MAX_RETRIES, QUALITY_THRESHOLD, Article, Citation, Task, format_citations, llm_ainvoke, parse_json
 
 from .citation_checker_agent import CitationCheckerAgent
 from .legal_research_agent import LegalResearchAgent

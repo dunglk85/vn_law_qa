@@ -166,3 +166,18 @@ async def create_mcp_knowledge_search_tool(
     except ConnectionError as exc:
         logger.warning("MCP tool created but not connected: %s", exc)
     return tool
+
+
+def create_mcp_knowledge_search_tool_lazy(
+    server_timeout: int = 30,
+    max_restarts: int = 3,
+) -> MCPKnowledgeSearchTool:
+    """Factory: create an MCP-backed knowledge search tool with lazy initialization.
+
+    The tool connects on first ainvoke() call — safe to call from sync code
+    (e.g., FastAPI startup) without asyncio.run().
+    """
+    return MCPKnowledgeSearchTool(
+        server_timeout=server_timeout,
+        max_restarts=max_restarts,
+    )

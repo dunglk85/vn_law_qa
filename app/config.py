@@ -1,8 +1,8 @@
 from __future__ import annotations
-import os
-import logging
-from dataclasses import dataclass
 
+import logging
+import os
+from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
@@ -181,17 +181,14 @@ class AppConfig:
 config = AppConfig()
 
 # --- Startup validation ---
-import logging as _logging
-_log = _logging.getLogger(__name__)
-
 if config.jwt_secret == "change-me-in-production":
-    _log.warning(
+    logger.warning(
         "JWT_SECRET is using the default value — "
         "set a strong secret in production via the JWT_SECRET env var"
     )
 
 if config.admin_password == "admin":
-    _log.warning(
+    logger.warning(
         "ADMIN_PASSWORD is 'admin' — "
         "set a strong password in production via the ADMIN_PASSWORD env var"
     )
