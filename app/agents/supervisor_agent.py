@@ -133,6 +133,7 @@ class SupervisorAgent:
     # ── nodes ──────────────────────────────────────────────────────────────
 
     async def analyze_query(self, state: SupervisorState) -> dict:
+        node_start = time.time()
         prompt = (
             "Phân tích câu hỏi pháp luật sau, trả lời chỉ JSON:\n"
             f"Câu hỏi: {state['query']}\n\n"
@@ -141,7 +142,7 @@ class SupervisorAgent:
         )
         try:
             r = await retry_with_backoff(
-                lambda: llm_ainvoke(self.llm, prompt),
+                lambda: llm_ainvoke(self.llm, prompt, call_name="analyze_query"),
                 max_attempts=config.tool_retry_max_attempts,
                 base_delay=config.tool_retry_base_delay,
                 desc="analyze_query",
@@ -151,6 +152,7 @@ class SupervisorAgent:
                 input=state["query"][:200],
                 output=str(analysis),
             )
+            step["duration_ms"] = round((time.time() - node_start) * 1000)
         except Exception as exc:
             logger.error("analyze_query failed: %s", exc)
             analysis = {}
@@ -159,6 +161,7 @@ class SupervisorAgent:
                 status="failed",
                 error=str(exc),
             )
+            step["duration_ms"] = round((time.time() - node_start) * 1000)
         return {
             "legal_domain": analysis.get("legal_domain"),
             "metadata": {**state.get("metadata", {}), "analysis": analysis},
@@ -195,6 +198,7 @@ class SupervisorAgent:
         return await self.research_agent.run(state["query"])
 
     async def execute_legal_research(self, state: SupervisorState) -> dict:
+        node_start = time.time()
         steps = list(state.get("reasoning_steps", []))
         articles: list[Article] = []
         try:
@@ -212,6 +216,7 @@ class SupervisorAgent:
                 status="failed",
                 error=str(exc),
             )
+            step["duration_ms"] = round((time.time() - node_start) * 1000)
             steps.append(step)
             return {"error": str(exc), "research_results": [], "reasoning_steps": steps}
 
@@ -243,6 +248,7 @@ class SupervisorAgent:
             output=f"articles={len(articles)}, tool_results={len(tool_calls)}",
             tool_calls=tool_calls,
         )
+        step["duration_ms"] = round((time.time() - node_start) * 1000)
         steps.append(step)
 
         return {
@@ -274,6 +280,7 @@ class SupervisorAgent:
             state.get("research_results", []), state["query"])
 
     async def execute_citation_check(self, state: SupervisorState) -> dict:
+        node_start = time.time()
         steps = list(state.get("reasoning_steps", []))
         try:
             citations = await retry_with_backoff(
@@ -289,6 +296,7 @@ class SupervisorAgent:
                 input=f"articles={len(state.get('research_results',[]))}",
                 output=f"citations={len(citations)}",
             )
+            step["duration_ms"] = round((time.time() - node_start) * 1000)
             steps.append(step)
 
             return {"verified_citations": citations, "retry_count": new_retry, "error": None,
@@ -299,6 +307,7 @@ class SupervisorAgent:
                 status="failed",
                 error=str(exc),
             )
+            step["duration_ms"] = round((time.time() - node_start) * 1000)
             steps.append(step)
             return {"error": str(exc), "verified_citations": [],
                     "retry_count": state.get("retry_count", 0) + 1,
@@ -321,6 +330,7 @@ class SupervisorAgent:
             state["query"], state.get("verified_citations", []))
 
     async def execute_response_synthesis(self, state: SupervisorState) -> dict:
+        node_start = time.time()
         new_retry = state.get("retry_count", 0) + 1
         steps = list(state.get("reasoning_steps", []))
         try:
@@ -338,6 +348,7 @@ class SupervisorAgent:
                 input=f"citations={len(state.get('verified_citations',[]))}",
                 output=f"response_length={len(result['response'])}",
             )
+            step["duration_ms"] = round((time.time() - node_start) * 1000)
             steps.append(step)
             return {"final_response": result["response"], "error": None,
                     "retry_count": new_retry, "reasoning_steps": steps}
@@ -347,6 +358,7 @@ class SupervisorAgent:
                 status="failed",
                 error=str(exc),
             )
+            step["duration_ms"] = round((time.time() - node_start) * 1000)
             steps.append(step)
             return {"error": str(exc), "final_response": None,
                     "retry_count": new_retry, "reasoning_steps": steps}
@@ -383,7 +395,7 @@ class SupervisorAgent:
             "average of the first three dimensions minus hallucination_risk."
         )
         result = await retry_with_backoff(
-            lambda: llm_ainvoke(self.llm, prompt),
+            lambda: llm_ainvoke(self.llm, prompt, call_name="quality_check"),
             max_attempts=config.tool_retry_max_attempts,
             base_delay=config.tool_retry_base_delay,
             desc="llm_quality_check",
@@ -391,6 +403,7 @@ class SupervisorAgent:
         return parse_json(result.content, "llm_quality_check")
 
     async def validate_quality(self, state: SupervisorState) -> dict:
+        node_start = time.time()
         response  = state.get("final_response") or ""
         citations = state.get("verified_citations", [])
         query     = state["query"]
@@ -399,6 +412,7 @@ class SupervisorAgent:
         if not response:
             step = self._step("supervisor", "validate_quality",
                 input="no_response", output="score=0.0")
+            step["duration_ms"] = round((time.time() - node_start) * 1000)
             steps.append(step)
             return {"quality_score": 0.0, "reasoning_steps": steps}
 
@@ -421,6 +435,7 @@ class SupervisorAgent:
             input=f"response_len={len(response)}, citations={len(citations)}",
             output=f"quality_score={round(score,2)}",
         )
+        step["duration_ms"] = round((time.time() - node_start) * 1000)
         steps.append(step)
         return {
             "quality_score": round(score, 2),

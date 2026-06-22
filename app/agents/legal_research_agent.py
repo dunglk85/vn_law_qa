@@ -9,17 +9,23 @@ Pipeline:
 import asyncio
 import hashlib
 import logging
-from typing import Optional, TypedDict, Any
+from typing import Any, TypedDict
 
 from langchain_core.language_models import BaseChatModel
 from langgraph.graph import END, START, StateGraph
 
-from app.ports.retriever import RetrieverPort
 from app.core.models import (
-    Article, llm_ainvoke, parse_json, parse_list,
-    N_RESULTS_PER_VECTOR, TOP_K_RESEARCH, TOP_K_LLM_SCORE,
-    HYDE_ENABLED, SUBQUERY_COUNT,
+    HYDE_ENABLED,
+    N_RESULTS_PER_VECTOR,
+    SUBQUERY_COUNT,
+    TOP_K_LLM_SCORE,
+    TOP_K_RESEARCH,
+    Article,
+    llm_ainvoke,
+    parse_json,
+    parse_list,
 )
+from app.ports.retriever import RetrieverPort
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +41,7 @@ class LegalResearchState(TypedDict):
 
 
 class LegalResearchAgent:
-    def __init__(self, retriever: RetrieverPort, llm: Optional[BaseChatModel] = None):
+    def __init__(self, retriever: RetrieverPort, llm: BaseChatModel | None = None):
         if llm is None:
             raise ValueError("LegalResearchAgent requires a chat model")
         self.retriever = retriever
@@ -92,7 +98,7 @@ class LegalResearchAgent:
             'JSON (mảng chuỗi): ["câu 1", "câu 2", ...]'
         )
         try:
-            r = await llm_ainvoke(self.llm, prompt)
+            r = await llm_ainvoke(self.llm, prompt, call_name="decompose_query")
             qs = parse_list(r.content, "decompose_query")
             return [q.strip() for q in qs if q.strip()] or [query]
         except Exception as exc:
@@ -111,7 +117,9 @@ class LegalResearchAgent:
                 results: list[Article] = []
                 for doc in docs:
                     metadata = doc.metadata or {}
-                    chunk_id = metadata.get("chunk_id") or f"{metadata.get('source','unknown')}::{hashlib.md5(doc.page_content.encode()).hexdigest()}"
+                    source = metadata.get("source", "unknown")
+                    content_hash = hashlib.md5(doc.page_content.encode()).hexdigest()
+                    chunk_id = metadata.get("chunk_id") or f"{source}::{content_hash}"
                     relevance_score = float(metadata.get("score", -1.0) or -1.0)
                     results.append(
                         Article(
@@ -174,7 +182,7 @@ class LegalResearchAgent:
             'JSON: {"score": <0-10>, "reason": "..."}'
         )
         try:
-            r    = await llm_ainvoke(self.llm, prompt)
+            r = await llm_ainvoke(self.llm, prompt, call_name="llm_score")
             data = parse_json(r.content, "_llm_score")
             return article, max(0.0, min(10.0, float(data.get("score", 5))))
         except Exception as exc:

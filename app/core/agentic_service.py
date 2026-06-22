@@ -95,6 +95,8 @@ class AgenticService:
         return total
 
     async def _summarize_with_llm(self, texts: list[str]) -> str:
+        from app.core.models import llm_ainvoke
+
         chat_model = self._llm.get_chat_model()
         prompt = (
             "Summarize the following conversation, preserving key facts, "
@@ -105,7 +107,7 @@ class AgenticService:
         for t in texts:
             prompt += f"{t}\n"
         prompt += "\n---\nSummary:"
-        result = await chat_model.ainvoke(prompt)
+        result = await llm_ainvoke(chat_model, prompt, call_name="history_summarize")
         return result.content.strip()
 
     async def _compress_history(

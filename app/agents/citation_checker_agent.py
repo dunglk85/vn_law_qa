@@ -9,16 +9,20 @@ Zero survivors → empty list → supervisor triggers retry_research.
 """
 import asyncio
 import logging
-from typing import Optional, TypedDict
+from typing import TypedDict
 
 from langchain_core.language_models import BaseChatModel
 from langgraph.graph import END, START, StateGraph
 
-from app.ports.vector_store import VectorStorePort
 from app.core.models import (
-    Article, Citation, format_citations, llm_ainvoke, parse_json,
     RELEVANCE_THRESHOLD,
+    Article,
+    Citation,
+    format_citations,
+    llm_ainvoke,
+    parse_json,
 )
+from app.ports.vector_store import VectorStorePort
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +39,7 @@ class CitationCheckState(TypedDict):
 
 
 class CitationCheckerAgent:
-    def __init__(self, vector_store: VectorStorePort, llm: Optional[BaseChatModel] = None):
+    def __init__(self, vector_store: VectorStorePort, llm: BaseChatModel | None = None):
         if llm is None:
             raise ValueError("CitationCheckerAgent requires a chat model")
         self.vector_store = vector_store
@@ -74,8 +78,10 @@ class CitationCheckerAgent:
 
         results = await asyncio.gather(*[_check(a) for a in state.get("articles", [])])
         for cit, inv in results:
-            if cit: verified.append(cit)
-            if inv: invalid.append(inv)
+            if cit:
+                verified.append(cit)
+            if inv:
+                invalid.append(inv)
 
         gate_log.append(f"Gate 1: {len(verified)} passed, {len(invalid)} failed {invalid}")
         logger.info(gate_log[-1])
@@ -119,11 +125,11 @@ class CitationCheckerAgent:
             '[{"keep": "<id>", "remove": "<id>", "reason": "..."}]}'
         )
         try:
-            r    = await llm_ainvoke(self.llm, prompt)
+            r    = await llm_ainvoke(self.llm, prompt, call_name="cross_reference")
             data = parse_json(r.content, "cross_reference")
         except Exception as exc:
             logger.error("Gate 3 LLM failed: %s", exc)
-            gate_log.append(f"Gate 3: LLM error, skipped")
+            gate_log.append("Gate 3: LLM error, skipped")
             return {"verified_citations": citations, "contradictions": [],
                     "consistency_score": 1.0, "gate_log": gate_log}
 

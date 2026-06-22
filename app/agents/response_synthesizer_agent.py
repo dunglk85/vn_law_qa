@@ -1,7 +1,6 @@
 """ResponseSynthesizerAgent — generates grounded Vietnamese legal responses."""
 import logging
 from dataclasses import asdict
-from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
 
@@ -11,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class ResponseSynthesizerAgent:
-    def __init__(self, llm: Optional[BaseChatModel] = None):
+    def __init__(self, llm: BaseChatModel | None = None):
         if llm is None:
             raise ValueError("ResponseSynthesizerAgent requires a chat model")
         self.llm = llm
@@ -32,7 +31,7 @@ class ResponseSynthesizerAgent:
             "thêm khuyến nghị nếu cần, lưu ý tham khảo luật sư.\n\nTrả lời:"
         )
         try:
-            response = await llm_ainvoke(self.llm, prompt)
+            response = await llm_ainvoke(self.llm, prompt, call_name="response_synthesis")
             return {
                 "response": response.content,
                 "citations": [asdict(c) for c in citations],

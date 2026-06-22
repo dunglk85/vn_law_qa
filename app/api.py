@@ -213,6 +213,8 @@ async def ask(
     request: Request,
     _user: dict = Depends(require_role("admin", "viewer")),
 ) -> dict:
+    from app.core.token_tracker import reset_tracker
+
     client_ip = _get_client_ip(request)
     if not await _rate_limiter.check(client_ip):
         return JSONResponse(
@@ -220,12 +222,16 @@ async def ask(
             status_code=429,
         )
 
+    trace_id = str(uuid.uuid4())
     start = time.perf_counter()
-    logger.info("POST /ask question=%.80s client=%s", q.question, client_ip)
+    logger.info("POST /ask trace_id=%s question=%.80s client=%s", trace_id, q.question, client_ip)
+
+    tracker = reset_tracker()
 
     tenant_id = _user.get("tenant_id") if isinstance(_user, dict) else None
     session_id = q.session_id or _user.get("sub", "anonymous") if isinstance(_user, dict) else "anonymous"
 
+    quality_score = None
     try:
         async with asyncio.timeout(config.ask_timeout):
             if _agentic_service:
@@ -235,6 +241,16 @@ async def ask(
                     tenant_id=tenant_id,
                     session_id=session_id,
                 )
+                if reasoning_steps:
+                    for step in reversed(reasoning_steps):
+                        if step.get("action") == "validate_quality":
+                            output = step.get("output", "")
+                            if "quality_score=" in output:
+                                try:
+                                    quality_score = float(output.split("quality_score=")[1].split(",")[0])
+                                except (ValueError, IndexError):
+                                    pass
+                            break
             else:
                 answer, sources, contexts = await _rag_service.answer(
                     question=q.question,
@@ -243,14 +259,28 @@ async def ask(
                 )
                 reasoning_steps = []
     except TimeoutError:
-        logger.error("/ask timed out after %.0fs", config.ask_timeout)
+        elapsed = time.perf_counter() - start
+        logger.error(
+            "/ask timed out trace_id=%s after %.0fs tokens=%d",
+            trace_id,
+            config.ask_timeout,
+            tracker.total_tokens,
+        )
         return JSONResponse(
             {"ok": False, "message": "Request timed out. Please try again."},
             status_code=504,
         )
 
     elapsed = time.perf_counter() - start
-    logger.info("/ask completed in %.2fs client=%s", elapsed, client_ip)
+    logger.info(
+        "/ask completed trace_id=%s latency=%.2fs tokens=%d llm_calls=%d quality=%.2f client=%s",
+        trace_id,
+        elapsed,
+        tracker.total_tokens,
+        tracker.llm_call_count,
+        quality_score or 0.0,
+        client_ip,
+    )
 
     response: dict = {
         "answer": answer,
@@ -261,8 +291,7 @@ async def ask(
     if reasoning_steps:
         trace_json = json.dumps(reasoning_steps, default=str)
         if len(trace_json) > 102400:
-            trace_id = str(uuid.uuid4())
-            logger.info("Reasoning trace truncated, full trace_id=%s", trace_id)
+            logger.info("Reasoning trace truncated trace_id=%s", trace_id)
             response["reasoning_trace"] = reasoning_steps[:3]
             response["reasoning_trace_truncated"] = True
             response["trace_id"] = trace_id

@@ -176,6 +176,12 @@ class AppConfig:
     a2a_task_timeout: int = _int_env("A2A_TASK_TIMEOUT", 25)
     a2a_max_retries: int = _int_env("A2A_MAX_RETRIES", 1)
 
+    # ------------------------------------------------------------------
+    # LangSmith (Observability)
+    # ------------------------------------------------------------------
+    langsmith_tracing: bool = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
+    langsmith_project: str = _str_env("LANGSMITH_PROJECT", "company-knowledge-assistant")
+
 
 # Singleton — import this everywhere instead of reading os.getenv directly
 config = AppConfig()
