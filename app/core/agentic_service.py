@@ -62,9 +62,14 @@ class AgenticService:
                 a2a_client=a2a_client,
             )
         self._warmed_up = False
+        self._warmup_lock = asyncio.Lock()
 
     async def _ensure_warmup(self) -> None:
-        if not self._warmed_up:
+        if self._warmed_up:
+            return
+        async with self._warmup_lock:
+            if self._warmed_up:
+                return
             try:
                 await self._vector_store.similarity_search("warmup", k=1)
             except Exception as exc:

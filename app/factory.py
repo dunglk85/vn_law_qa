@@ -77,6 +77,7 @@ def _create_pgvector_store(
     index_type: str,
     hnsw_m: int,
     hnsw_ef_construction: int,
+    hnsw_ef_search: int,
     ivfflat_lists: int,
     ivfflat_probes: int,
 ) -> VectorStorePort:
@@ -87,6 +88,7 @@ def _create_pgvector_store(
         index_type=index_type,
         hnsw_m=hnsw_m,
         hnsw_ef_construction=hnsw_ef_construction,
+        hnsw_ef_search=hnsw_ef_search,
         ivfflat_lists=ivfflat_lists,
         ivfflat_probes=ivfflat_probes,
     )
@@ -265,6 +267,7 @@ def create_vector_store(embeddings: EmbeddingsPort | None = None) -> VectorStore
                     index_type=config.index_type,
                     hnsw_m=config.hnsw_m,
                     hnsw_ef_construction=config.hnsw_ef_construction,
+                    hnsw_ef_search=config.hnsw_ef_search,
                     ivfflat_lists=config.ivfflat_lists,
                     ivfflat_probes=config.ivfflat_probes)
 

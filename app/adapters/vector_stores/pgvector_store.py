@@ -1,16 +1,16 @@
 from __future__ import annotations
-from typing import List, Optional
+
 import asyncio
 import logging
 
 import psycopg
-from langchain_postgres import PGVector
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
-from langchain_core.callbacks import CallbackManagerForRetrieverRun
+from langchain_postgres import PGVector
 
-from app.ports.vector_store import VectorStorePort
 from app.ports.embeddings import EmbeddingsPort
+from app.ports.vector_store import VectorStorePort
 
 logger = logging.getLogger(__name__)
 
@@ -22,16 +22,18 @@ class _SyncRetriever(BaseRetriever):
 
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
-    ) -> List[Document]:
+    ) -> list[Document]:
         return self._store.similarity_search(query, **self._search_kwargs)
 
     async def _aget_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
-    ) -> List[Document]:
+    ) -> list[Document]:
         return await asyncio.to_thread(self._get_relevant_documents, query, run_manager=run_manager)
 
 
-def _create_hnsw_index_sync(connection_string: str, collection_name: str, hnsw_m: int, hnsw_ef_construction: int) -> None:
+def _create_hnsw_index_sync(
+    connection_string: str, collection_name: str, hnsw_m: int, hnsw_ef_construction: int
+) -> None:
     conn_str = connection_string.replace("postgresql+psycopg://", "postgresql://")
     index_name = f"hnsw_{collection_name}_embedding_idx"
 
@@ -56,7 +58,9 @@ def _create_hnsw_index_sync(connection_string: str, collection_name: str, hnsw_m
             logger.info("PGVECTOR: HNSW index '%s' created successfully.", index_name)
 
 
-def _create_ivfflat_index_sync(connection_string: str, collection_name: str, ivfflat_lists: int, ivfflat_probes: int) -> None:
+def _create_ivfflat_index_sync(
+    connection_string: str, collection_name: str, ivfflat_lists: int, ivfflat_probes: int
+) -> None:
     conn_str = connection_string.replace("postgresql+psycopg://", "postgresql://")
     index_name = f"ivfflat_{collection_name}_embedding_idx"
 
@@ -81,7 +85,10 @@ def _create_ivfflat_index_sync(connection_string: str, collection_name: str, ivf
 
             cur.execute("SET ivfflat.probes = %s", (ivfflat_probes,))
             conn.commit()
-            logger.info("PGVECTOR: IVFFlat index '%s' created successfully (lists=%d, probes=%d).", index_name, ivfflat_lists, ivfflat_probes)
+            logger.info(
+                "PGVECTOR: IVFFlat index '%s' created successfully (lists=%d, probes=%d).",
+                index_name, ivfflat_lists, ivfflat_probes
+            )
 
 
 class PGVectorStoreAdapter(VectorStorePort):
@@ -101,7 +108,8 @@ class PGVectorStoreAdapter(VectorStorePort):
         embeddings_port: EmbeddingsPort,
         index_type: str = "hnsw",
         hnsw_m: int = 16,
-        hnsw_ef_construction: int = 64,
+        hnsw_ef_construction: int = 200,
+        hnsw_ef_search: int = 50,
         ivfflat_lists: int = 100,
         ivfflat_probes: int = 10,
     ) -> None:
@@ -111,6 +119,7 @@ class PGVectorStoreAdapter(VectorStorePort):
         self._index_type = index_type
         self._hnsw_m = hnsw_m
         self._hnsw_ef_construction = hnsw_ef_construction
+        self._hnsw_ef_search = hnsw_ef_search
         self._ivfflat_lists = ivfflat_lists
         self._ivfflat_probes = ivfflat_probes
 
@@ -124,7 +133,7 @@ class PGVectorStoreAdapter(VectorStorePort):
             )
         return self._store
 
-    async def add_documents(self, documents: List[Document]) -> None:
+    async def add_documents(self, documents: list[Document]) -> None:
         store = self._get_store()
         await asyncio.to_thread(store.add_documents, documents)
 
@@ -132,17 +141,26 @@ class PGVectorStoreAdapter(VectorStorePort):
         self,
         query: str,
         k: int,
-        filter: Optional[dict] = None,
-    ) -> List[Document]:
+        filter: dict | None = None,
+    ) -> list[Document]:
         store = self._get_store()
+        if self._index_type == "hnsw":
+            conn_str = self._connection_string.replace("postgresql+psycopg://", "postgresql://")
+            try:
+                with psycopg.connect(conn_str) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("SET hnsw.ef_search = %s", (self._hnsw_ef_search,))
+                        conn.commit()
+            except Exception as exc:
+                logger.warning("PGVECTOR: Failed to set hnsw.ef_search: %s", exc)
         return await asyncio.to_thread(store.similarity_search, query, k, filter)
 
-    async def get_documents_by_ids(self, ids: list[str]) -> List[Document]:
+    async def get_documents_by_ids(self, ids: list[str]) -> list[Document]:
         store = self._get_store()
         results = await asyncio.to_thread(store.mget, ids)
         return [doc for doc in results if doc is not None]
 
-    def as_retriever(self, search_kwargs: Optional[dict] = None) -> BaseRetriever:
+    def as_retriever(self, search_kwargs: dict | None = None) -> BaseRetriever:
         """Return a retriever that uses sync similarity_search via thread pool."""
         self._get_store()
         kwargs = search_kwargs or {}

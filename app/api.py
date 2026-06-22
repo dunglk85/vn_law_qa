@@ -7,6 +7,7 @@ import logging
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, Request
@@ -20,6 +21,7 @@ from app.config import config
 from app.core.agentic_service import create_agentic_service
 from app.core.ingest_service import run_ingest
 from app.core.rag_service import RAGService
+from app.exceptions import AppError
 from app.factory import (
     create_a2a_client,
     create_cache,
@@ -42,82 +44,121 @@ from app.factory import (
 logger = logging.getLogger(__name__)
 
 _INGEST_API_KEY = os.getenv("INGEST_API_KEY", "")
+_VALID_RAG_MODES = {"legacy", "agentic"}
+
+# --------------------------------------------------------------------------- #
+# Lifespan context manager (startup/shutdown)                                  #
+# --------------------------------------------------------------------------- #
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifecycle: startup wiring and shutdown cleanup."""
+    logger.info("Starting up: initializing dependencies")
+
+    try:
+        embeddings = create_embeddings()
+        app.state.vector_store = create_vector_store(embeddings=embeddings)
+        app.state.llm = create_llm()
+        app.state.reranker = create_reranker(embeddings=embeddings)
+        app.state.cache = create_cache(embeddings=embeddings)
+        app.state.chunker = create_chunker(embeddings=embeddings)
+        app.state.retriever = create_retriever(vector_store=app.state.vector_store)
+        app.state.query_transformer = create_query_transformer(llm=app.state.llm)
+        app.state.enricher = create_metadata_enricher(llm=app.state.llm)
+
+        try:
+            app.state.cache.apply()
+        except Exception as e:
+            logger.warning("CACHE: Failed to activate cache (%s). Running without cache.", e)
+
+        app.state.rate_limiter = create_rate_limiter()
+        app.state.session_store = create_session_store()
+
+        app.state.rag_service = RAGService(
+            vector_store=app.state.vector_store,
+            llm=app.state.llm,
+            reranker=app.state.reranker,
+            retriever=app.state.retriever,
+            query_transformer=app.state.query_transformer,
+        )
+
+        if config.rag_mode.lower() not in _VALID_RAG_MODES:
+            logger.warning(
+                "Unknown RAG_MODE='%s'. Falling back to legacy. Valid: %s",
+                config.rag_mode, _VALID_RAG_MODES
+            )
+
+        app.state.knowledge_search_tool = create_knowledge_search_tool(retriever_port=app.state.retriever)
+
+        if config.rag_mode.lower() == "agentic":
+            research_agent = create_legal_research_agent(retriever=app.state.retriever, llm=app.state.llm)
+            citation_agent = create_citation_checker_agent(vector_store=app.state.vector_store, llm=app.state.llm)
+            synthesis_agent = create_response_synthesizer_agent(llm=app.state.llm)
+            a2a_client = create_a2a_client(
+                research_agent=research_agent,
+                citation_agent=citation_agent,
+                synthesis_agent=synthesis_agent,
+            )
+            app.state.agentic_service = create_agentic_service(
+                vector_store=app.state.vector_store,
+                llm=app.state.llm,
+                retriever=app.state.retriever,
+                query_transformer=app.state.query_transformer,
+                knowledge_search_tool=app.state.knowledge_search_tool,
+                session_store=app.state.session_store,
+                a2a_client=a2a_client,
+            )
+            logger.info("RAG_MODE=agentic: AgenticService initialized with A2A client")
+        else:
+            app.state.agentic_service = None
+            logger.info("RAG_MODE=legacy: RAGService initialized (default)")
+
+        logger.info("Startup complete")
+
+    except Exception as exc:
+        logger.error("Startup failed: %s", exc, exc_info=True)
+        raise
+
+    yield
+
+    logger.info("Shutting down: cleaning up resources")
+    if hasattr(app.state, "knowledge_search_tool") and hasattr(app.state.knowledge_search_tool, "close"):
+        try:
+            await app.state.knowledge_search_tool.close()
+        except Exception as exc:
+            logger.warning("Failed to close MCP tool: %s", exc)
+
 
 # --------------------------------------------------------------------------- #
 # App bootstrap                                                                #
 # --------------------------------------------------------------------------- #
 
-app = FastAPI(title="Company Knowledge Assistant")
+app = FastAPI(title="Company Knowledge Assistant", lifespan=lifespan)
 app.include_router(auth_router)
 
-# Static frontend
+
+@app.exception_handler(AppError)
+async def app_error_handler(request: Request, exc: AppError):
+    """Handle AppError exceptions with structured JSON responses."""
+    logger.error(
+        "AppError: %s (status=%d, details=%s)",
+        exc.message,
+        exc.status_code,
+        exc.details,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "ok": False,
+            "error": exc.message,
+            "details": exc.details,
+        },
+    )
+
+
 static_dir = Path(__file__).with_name("static")
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-
-# --------------------------------------------------------------------------- #
-# Dependency wiring (done once at startup via factory)                         #
-# --------------------------------------------------------------------------- #
-
-# Shared embeddings instance — reused by both vector_store and cache
-# so embeddings are never created twice with different configs.
-_embeddings = create_embeddings()
-_vector_store = create_vector_store(embeddings=_embeddings)
-_llm = create_llm()
-_reranker = create_reranker(embeddings=_embeddings)
-_cache = create_cache(embeddings=_embeddings)
-_chunker = create_chunker(embeddings=_embeddings)
-_retriever = create_retriever(vector_store=_vector_store)
-_query_transformer = create_query_transformer(llm=_llm)
-_enricher = create_metadata_enricher(llm=_llm)
-
-# Activate LLM cache (e.g. Redis semantic cache, or no-op)
-try:
-    _cache.apply()
-except Exception as e:
-    logger.warning("CACHE: Failed to activate cache (%s). Running without cache.", e)
-
-# Rate limiter (Redis-backed with in-memory fallback)
-_rate_limiter = create_rate_limiter()
-
-# Session store (Redis-backed with in-memory fallback)
-_session_store = create_session_store()
-
-# RAGService: business logic with injected dependencies
-_rag_service = RAGService(
-    vector_store=_vector_store,
-    llm=_llm,
-    reranker=_reranker,
-    retriever=_retriever,
-    query_transformer=_query_transformer,
-)
-
-# AgenticService: optional alternative using LangGraph agents
-_agentic_service = None
-_VALID_RAG_MODES = {"legacy", "agentic"}
-if config.rag_mode.lower() not in _VALID_RAG_MODES:
-    logger.warning("Unknown RAG_MODE='%s'. Falling back to legacy. Valid: %s", config.rag_mode, _VALID_RAG_MODES)
-_knowledge_search_tool = create_knowledge_search_tool(retriever_port=_retriever)
-if config.rag_mode.lower() == "agentic":
-    _research_agent = create_legal_research_agent(retriever=_retriever, llm=_llm)
-    _citation_agent = create_citation_checker_agent(vector_store=_vector_store, llm=_llm)
-    _synthesis_agent = create_response_synthesizer_agent(llm=_llm)
-    _a2a_client = create_a2a_client(
-        research_agent=_research_agent,
-        citation_agent=_citation_agent,
-        synthesis_agent=_synthesis_agent,
-    )
-    _agentic_service = create_agentic_service(
-        vector_store=_vector_store,
-        llm=_llm,
-        retriever=_retriever,
-        query_transformer=_query_transformer,
-        knowledge_search_tool=_knowledge_search_tool,
-        session_store=_session_store,
-        a2a_client=_a2a_client,
-    )
-    logger.info("RAG_MODE=agentic: AgenticService initialized with A2A client")
-else:
-    logger.info("RAG_MODE=legacy: RAGService initialized (default)")
 
 # --------------------------------------------------------------------------- #
 # Ingestion state                                                              #
@@ -126,15 +167,15 @@ else:
 _ingest_lock = asyncio.Lock()
 _ingest_task: asyncio.Task | None = None
 _ingest_last: dict = {
-    "status": "idle",       # idle | running | succeeded | failed
+    "status": "idle",
     "started_at": None,
     "finished_at": None,
-    "stats": None,          # {"documents": ..., "chunks": ...}
+    "stats": None,
     "error": None,
 }
 
 
-async def _ingest_job() -> None:
+async def _ingest_job(vector_store, chunker, retriever, enricher) -> None:
     _ingest_last.update({
         "status": "running",
         "started_at": time.time(),
@@ -143,7 +184,7 @@ async def _ingest_job() -> None:
         "error": None,
     })
     try:
-        stats = await run_ingest(_vector_store, _chunker, _retriever, _enricher)
+        stats = await run_ingest(vector_store, chunker, retriever, enricher)
         _ingest_last.update({"status": "succeeded", "finished_at": time.time(), "stats": stats})
     except Exception as e:
         _ingest_last.update({"status": "failed", "finished_at": time.time(), "error": str(e)})
@@ -152,6 +193,7 @@ async def _ingest_job() -> None:
 # --------------------------------------------------------------------------- #
 # Request models                                                               #
 # --------------------------------------------------------------------------- #
+
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
@@ -162,6 +204,7 @@ class AskRequest(BaseModel):
 # --------------------------------------------------------------------------- #
 # Endpoints                                                                    #
 # --------------------------------------------------------------------------- #
+
 
 @app.get("/")
 async def root_page() -> FileResponse:
@@ -175,6 +218,7 @@ async def health() -> dict:
 
 @app.post("/ingest", response_model=None)
 async def kick_off_ingest(
+    request: Request,
     _user: dict = Depends(require_role("admin")),
     x_api_key: str | None = Header(None),
 ):
@@ -190,7 +234,14 @@ async def kick_off_ingest(
                 {"ok": False, "message": "Ingestion already running"},
                 status_code=409,
             )
-        _ingest_task = asyncio.create_task(_ingest_job())
+        _ingest_task = asyncio.create_task(
+            _ingest_job(
+                request.app.state.vector_store,
+                request.app.state.chunker,
+                request.app.state.retriever,
+                request.app.state.enricher,
+            )
+        )
     return {"ok": True, "message": "Ingestion started"}
 
 
@@ -200,7 +251,6 @@ async def ingest_status() -> dict:
 
 
 def _get_client_ip(request: Request) -> str:
-    """Extract client IP, respecting X-Forwarded-For behind trusted proxies."""
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -216,7 +266,7 @@ async def ask(
     from app.core.token_tracker import reset_tracker
 
     client_ip = _get_client_ip(request)
-    if not await _rate_limiter.check(client_ip):
+    if not await request.app.state.rate_limiter.check(client_ip):
         return JSONResponse(
             {"ok": False, "message": "Rate limit exceeded. Try again later."},
             status_code=429,
@@ -234,8 +284,8 @@ async def ask(
     quality_score = None
     try:
         async with asyncio.timeout(config.ask_timeout):
-            if _agentic_service:
-                answer, sources, contexts, reasoning_steps = await _agentic_service.answer(
+            if request.app.state.agentic_service:
+                answer, sources, contexts, reasoning_steps = await request.app.state.agentic_service.answer(
                     question=q.question,
                     category=q.category,
                     tenant_id=tenant_id,
@@ -252,7 +302,7 @@ async def ask(
                                     pass
                             break
             else:
-                answer, sources, contexts = await _rag_service.answer(
+                answer, sources, contexts = await request.app.state.rag_service.answer(
                     question=q.question,
                     category=q.category,
                     tenant_id=tenant_id,

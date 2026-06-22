@@ -114,7 +114,8 @@ class AppConfig:
     # hnsw | ivfflat
 
     hnsw_m: int = _int_env("HNSW_M", 16)
-    hnsw_ef_construction: int = _int_env("HNSW_EF_CONSTRUCTION", 64)
+    hnsw_ef_construction: int = _int_env("HNSW_EF_CONSTRUCTION", 200)
+    hnsw_ef_search: int = _int_env("HNSW_EF_SEARCH", 50)
 
     ivfflat_lists: int = _int_env("IVFFLAT_LISTS", 100)
     ivfflat_probes: int = _int_env("IVFFLAT_PROBES", 10)

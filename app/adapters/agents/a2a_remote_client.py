@@ -1,13 +1,17 @@
 """A2A remote client — sends JSON-RPC tasks to A2A servers via HTTP with SSE streaming."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from typing import Any, AsyncIterator
+import random
+import uuid
+from collections.abc import AsyncIterator
 
 import httpx
 from httpx_sse import aconnect_sse
 
+from app.config import config
 from app.core.a2a_client import A2AClientRouter, A2AEvent
 
 logger = logging.getLogger(__name__)
@@ -34,12 +38,13 @@ class A2ARemoteClient(A2AClientRouter):
         self, agent: str, payload: dict
     ) -> AsyncIterator[A2AEvent]:
         url = self._resolve_url(agent)
+        task_id = f"task-{agent}-{uuid.uuid4()}"
 
         rpc_body = {
             "jsonrpc": "2.0",
             "method": "tasks/sendMessage",
             "params": {
-                "id": f"task-{agent}-{id(payload)}",
+                "id": task_id,
                 "message": {
                     "role": "user",
                     "parts": [{"type": "data", "data": payload}],
@@ -49,8 +54,36 @@ class A2ARemoteClient(A2AClientRouter):
         }
 
         query = payload.get("query", "")
-        logger.info("A2A remote: sending task to %s (query=%.60s)", url, query)
+        logger.info("A2A remote: sending task %s to %s (query=%.60s)", task_id, url, query)
 
+        max_attempts = config.a2a_max_retries + 1
+        last_exc: Exception | None = None
+
+        for attempt in range(max_attempts):
+            try:
+                events = await asyncio.wait_for(
+                    self._collect_sse_events(url, rpc_body),
+                    timeout=self._timeout,
+                )
+                for event in events:
+                    yield event
+                return
+            except Exception as exc:
+                last_exc = exc
+                if attempt < max_attempts - 1:
+                    delay = min(1.0 * (2 ** attempt), 10.0)
+                    jitter = random.uniform(0, delay * 0.1)
+                    logger.warning(
+                        "a2a_%s attempt %d/%d failed: %s. Retrying in %.2fs",
+                        agent, attempt + 1, max_attempts, exc, delay + jitter,
+                    )
+                    await asyncio.sleep(delay + jitter)
+
+        logger.error("A2A remote: task %s failed after %d attempts: %s", task_id, max_attempts, last_exc)
+        yield A2AEvent(type="task_status", status={"state": "failed", "error": str(last_exc)})
+
+    async def _collect_sse_events(self, url: str, rpc_body: dict) -> list[A2AEvent]:
+        events: list[A2AEvent] = []
         async with httpx.AsyncClient(timeout=httpx.Timeout(self._timeout)) as client:
             async with aconnect_sse(
                 client, "POST", f"{url}/",
@@ -59,11 +92,12 @@ class A2ARemoteClient(A2AClientRouter):
                 async for event in event_source.aiter_sse():
                     if event.event == "task_status":
                         data = json.loads(event.data)
-                        yield A2AEvent(type="task_status", status=data.get("status"))
+                        events.append(A2AEvent(type="task_status", status=data.get("status")))
                     elif event.event == "task_artifact":
                         data = json.loads(event.data)
-                        yield A2AEvent(type="task_artifact", artifact=data.get("artifact"))
+                        events.append(A2AEvent(type="task_artifact", artifact=data.get("artifact")))
                     elif event.event == "error":
                         data = json.loads(event.data)
                         logger.error("A2A remote error: %s", data)
-                        yield A2AEvent(type="task_status", status={"state": "failed", "error": str(data)})
+                        events.append(A2AEvent(type="task_status", status={"state": "failed", "error": str(data)}))
+        return events
