@@ -22,7 +22,6 @@ RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); 
 
 # Copy project files
 COPY app/ /app/app/
-COPY shared.py /app/shared.py
 COPY data/ /app/data/
 
 # Create non-root user

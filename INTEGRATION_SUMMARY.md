@@ -137,7 +137,7 @@ python -m uvicorn app.api:app --reload
 
 ## Files Created Previously
 - `app/core/agentic_service.py` - New orchestration service
-- `shared.py` - Shared types and utilities
+- (removed) `shared.py` — consolidated into `app/core/models`
 - `app/agents/legal_research_agent.py` - Refactored to use ports
 - `app/agents/citation_checker_agent.py` - Refactored to use ports
 - `app/agents/response_synthesizer_agent.py` - Refactored to use ports

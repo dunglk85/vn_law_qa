@@ -94,7 +94,7 @@ class AgenticService:
             total += len(t) // 4
         return total
 
-    def _summarize_with_llm(self, texts: list[str]) -> str:
+    async def _summarize_with_llm(self, texts: list[str]) -> str:
         chat_model = self._llm.get_chat_model()
         prompt = (
             "Summarize the following conversation, preserving key facts, "
@@ -105,10 +105,10 @@ class AgenticService:
         for t in texts:
             prompt += f"{t}\n"
         prompt += "\n---\nSummary:"
-        result = chat_model.invoke(prompt)
+        result = await chat_model.ainvoke(prompt)
         return result.content.strip()
 
-    def _compress_history(
+    async def _compress_history(
         self,
         history: list[dict],
         existing_summary: str,
@@ -127,18 +127,21 @@ class AgenticService:
             content = turn.get("content", "")
             older_texts.append(f"{role}: {content}")
 
-        combined_text = existing_summary + "\n" + "\n".join(older_texts) if existing_summary else "\n".join(older_texts)
-        token_count = self._estimate_tokens([combined_text])
+        older_combined = "\n".join(older_texts)
+        token_count = self._estimate_tokens([older_combined])
 
         if token_count > config.max_history_tokens:
             try:
-                new_summary = self._summarize_with_llm([combined_text])
+                new_summary = await self._summarize_with_llm([older_combined])
+                if existing_summary:
+                    new_summary = existing_summary + "\n" + new_summary
                 logger.info("History compressed: %d older turns summarized", len(older))
             except Exception as exc:
                 logger.warning("Summarization failed, keeping raw history: %s", exc)
                 return history, existing_summary
         else:
-            new_summary = combined_text
+            prefix = existing_summary + "\n\n" if existing_summary else ""
+            new_summary = prefix + older_combined
 
         return recent, new_summary
 
@@ -156,7 +159,7 @@ class AgenticService:
         history = session_data.get("history", [])
         summary = session_data.get("summary", "")
 
-        history, summary = self._compress_history(history, summary)
+        history, summary = await self._compress_history(history, summary)
 
         transformed_queries = await self._query_transformer.transform(question)
         question_for_agents = transformed_queries[0] if transformed_queries else question

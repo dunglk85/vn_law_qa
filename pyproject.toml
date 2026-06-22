@@ -1,7 +1,7 @@
 [tool.ruff]
 target-version = "py314"
 line-length = 120
-exclude = ["scripts", "law-crawler", "seed", "shared.py"]
+exclude = ["scripts", "law-crawler", "seed"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]

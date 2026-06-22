@@ -1,9 +1,4 @@
-"""Shared domain models, utilities, and re-exported configuration constants.
-
-This module consolidates types and helpers previously in the root-level
-``shared.py``.  New code should import from ``app.core.models`` (or from
-``app.config`` for configuration values).
-"""
+"""Domain models, utilities, and re-exported configuration constants."""
 from __future__ import annotations
 
 import asyncio

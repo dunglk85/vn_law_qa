@@ -177,7 +177,6 @@ company-knowledge-assistant/
 ├── tests/
 │   └── test_architecture.py   # 9 architectural boundary tests
 │   └── test_rate_limiter.py   # Unit tests for memory & Redis rate limiters
-├── shared.py                  # Thin re-export shim → app.core.models
 ├── Dockerfile                 # python:3.11-slim, non-root user, no --reload
 ├── docker-compose.yml         # postgres + redis + app + pgweb
 └── .env.example               # All config keys with placeholder values
@@ -382,7 +381,7 @@ FROM python:3.11-slim
   → system deps (build-essential, curl)
   → pip install -r requirements.txt
   → pre-download NLTK data
-  → COPY app/ shared.py data/
+  → COPY app/ data/
   → groupadd + useradd appuser
   → CMD uvicorn app.api:app --host 0.0.0.0 --port 8000
 ```

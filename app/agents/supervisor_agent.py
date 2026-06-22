@@ -19,7 +19,7 @@ from langgraph.graph.message import add_messages
 from app.config import config
 from app.core.a2a_client import A2AClientRouter
 from app.core.retry import retry_with_backoff
-from app.core.models import MAX_RETRIES, QUALITY_THRESHOLD, Article, Citation, Task, llm_ainvoke, parse_json
+from app.core.models import MAX_RETRIES, QUALITY_THRESHOLD, Article, Citation, Task, format_citations, llm_ainvoke, parse_json
 
 from .citation_checker_agent import CitationCheckerAgent
 from .legal_research_agent import LegalResearchAgent
@@ -340,9 +340,7 @@ class SupervisorAgent:
             return {"error": str(exc), "final_response": None,
                     "retry_count": new_retry, "reasoning_steps": steps}
 
-    async def validate_quality(self, state: SupervisorState) -> dict:
-        response  = state.get("final_response") or ""
-        citations = state.get("verified_citations", [])
+    def _heuristic_score(self, response: str, citations: list[Citation]) -> float:
         score = 0.0
         if response:
             score += 0.4
@@ -352,15 +350,70 @@ class SupervisorAgent:
             score += 0.2
         if len(response) > 100:
             score += 0.1
-        logger.info("quality: %.2f", score)
+        return score
+
+    async def _llm_quality_check(self, query: str, response: str, citations: list[Citation]) -> dict:
+        citation_context = format_citations(citations) if citations else "(none)"
+        prompt = (
+            "Evaluate the assistant response below for quality and accuracy.  "
+            "Return ONLY valid JSON, no explanation.\n\n"
+            f"User question: {query}\n\n"
+            f"Verified source citations:\n{citation_context}\n\n"
+            f"Assistant response:\n{response}\n\n"
+            "JSON schema:\n"
+            '{"query_relevance": 0.0-1.0,\n'
+            ' "citation_grounding": 0.0-1.0,\n'
+            ' "completeness": 0.0-1.0,\n'
+            ' "hallucination_risk": 0.0-1.0,\n'
+            ' "overall_score": 0.0-1.0,\n'
+            ' "issues": ["issue1", "issue2"]}\n\n'
+            "hallucination_risk is HIGH (closer to 1.0) when the response makes "
+            "claims NOT supported by the citations.  overall_score should be the "
+            "average of the first three dimensions minus hallucination_risk."
+        )
+        result = await retry_with_backoff(
+            lambda: llm_ainvoke(self.llm, prompt),
+            max_attempts=config.tool_retry_max_attempts,
+            base_delay=config.tool_retry_base_delay,
+            desc="llm_quality_check",
+        )
+        return parse_json(result.content, "llm_quality_check")
+
+    async def validate_quality(self, state: SupervisorState) -> dict:
+        response  = state.get("final_response") or ""
+        citations = state.get("verified_citations", [])
+        query     = state["query"]
+        steps     = list(state.get("reasoning_steps", []))
+
+        if not response:
+            step = self._step("supervisor", "validate_quality",
+                input="no_response", output="score=0.0")
+            steps.append(step)
+            return {"quality_score": 0.0, "reasoning_steps": steps}
+
+        try:
+            evaluation = await self._llm_quality_check(query, response, citations)
+            if "overall_score" in evaluation:
+                score = float(evaluation["overall_score"])
+                issues = evaluation.get("issues", [])
+                if issues:
+                    logger.info("Quality issues: %s", issues)
+            else:
+                score = self._heuristic_score(response, citations)
+            logger.info("Quality: LLM=%.2f", score)
+        except Exception as exc:
+            logger.warning("LLM quality check failed, falling back to heuristic: %s", exc)
+            score = self._heuristic_score(response, citations)
+            logger.info("Quality: heuristic=%.2f", score)
 
         step = self._step("supervisor", "validate_quality",
-            input=f"score={round(score,2)}",
+            input=f"response_len={len(response)}, citations={len(citations)}",
             output=f"quality_score={round(score,2)}",
         )
+        steps.append(step)
         return {
             "quality_score": round(score, 2),
-            "reasoning_steps": [*state.get("reasoning_steps", []), step],
+            "reasoning_steps": steps,
         }
 
     # ── routers ────────────────────────────────────────────────────────────
