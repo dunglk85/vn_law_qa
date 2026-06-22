@@ -34,7 +34,7 @@ class TestArchitecture(unittest.TestCase):
 
     def _get_imports_and_classes(self, file_path: Path):
         """Parse file content and return list of resolved absolute import modules and class definitions."""
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
 
         try:

@@ -1,9 +1,6 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
-from typing import List
 
-from langchain_core.documents import Document
-from langchain_core.retrievers import BaseRetriever
+from abc import ABC, abstractmethod
 
 
 class QueryTransformerPort(ABC):
@@ -14,7 +11,7 @@ class QueryTransformerPort(ABC):
     """
 
     @abstractmethod
-    async def transform(self, query: str) -> List[str]:
+    async def transform(self, query: str) -> list[str]:
         """Transform the original query into one or more retrieval queries.
 
         Args:

@@ -1,11 +1,8 @@
 from __future__ import annotations
-from typing import List, Optional, Sequence
 
-from langchain_core.callbacks import Callbacks
-from langchain_core.documents import Document
-from langchain_core.documents.compressor import BaseDocumentCompressor
 from langchain.retrievers.document_compressors import CrossEncoderReranker
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+from langchain_core.documents.compressor import BaseDocumentCompressor
 
 from app.ports.reranker import RerankerPort
 
@@ -26,7 +23,7 @@ class CrossEncoderRerankerAdapter(RerankerPort):
         self._top_n = top_n
         self._compressor: BaseDocumentCompressor | None = None
 
-    def get_compressor(self) -> Optional[BaseDocumentCompressor]:
+    def get_compressor(self) -> BaseDocumentCompressor | None:
         if self._compressor is None:
             cross_encoder = HuggingFaceCrossEncoder(model_name=self._model)
             self._compressor = CrossEncoderReranker(model=cross_encoder, top_n=self._top_n)

@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import Optional
 
 from langchain_core.documents.compressor import BaseDocumentCompressor
 
@@ -13,5 +12,5 @@ class NoneRerankerAdapter(RerankerPort):
     Useful for development, cost saving, or when reranking is not needed.
     """
 
-    def get_compressor(self) -> Optional[BaseDocumentCompressor]:
+    def get_compressor(self) -> BaseDocumentCompressor | None:
         return None

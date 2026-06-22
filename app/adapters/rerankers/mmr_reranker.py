@@ -1,12 +1,13 @@
 from __future__ import annotations
-from typing import List, Optional, Sequence
+
+from collections.abc import Sequence
 
 import numpy as np
+from langchain.vectorstores.utils import maximal_marginal_relevance
 from langchain_core.callbacks import Callbacks
 from langchain_core.documents import Document
 from langchain_core.documents.compressor import BaseDocumentCompressor
 from langchain_core.embeddings import Embeddings
-from langchain.vectorstores.utils import maximal_marginal_relevance
 
 from app.ports.reranker import RerankerPort
 
@@ -22,7 +23,7 @@ class _MMRCompressor(BaseDocumentCompressor):
         self,
         documents: Sequence[Document],
         query: str,
-        callbacks: Optional[Callbacks] = None,
+        callbacks: Callbacks | None = None,
     ) -> Sequence[Document]:
         if len(documents) <= self.k:
             return documents
@@ -63,7 +64,7 @@ class MMRRerankerAdapter(RerankerPort):
         self._top_n = top_n
         self._lambda_mult = lambda_mult
 
-    def get_compressor(self) -> Optional[BaseDocumentCompressor]:
+    def get_compressor(self) -> BaseDocumentCompressor | None:
         return _MMRCompressor(
             embeddings=self._embeddings,
             k=self._top_n,

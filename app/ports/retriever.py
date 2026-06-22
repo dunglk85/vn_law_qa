@@ -1,8 +1,7 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
-from typing import List, Optional
 
-from langchain_core.callbacks import CallbackManagerForRetrieverRun
+from abc import ABC, abstractmethod
+
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
@@ -15,11 +14,11 @@ class RetrieverPort(ABC):
     """
 
     @abstractmethod
-    def get_retriever(self, search_kwargs: Optional[dict] = None) -> BaseRetriever:
+    def get_retriever(self, search_kwargs: dict | None = None) -> BaseRetriever:
         """Return a LangChain-compatible BaseRetriever instance."""
         ...
 
     @abstractmethod
-    def build_index(self, documents: List[Document]) -> None:
+    def build_index(self, documents: list[Document]) -> None:
         """Build any required index from the document corpus."""
         ...

@@ -1,8 +1,6 @@
 """Tests for A2A client interface and InProcessFallbackClient."""
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 
 from app.core.a2a_client import A2AClientRouter, A2AEvent

@@ -8,3 +8,8 @@ select = ["E", "F", "I", "N", "W", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+"app/agents/a2a_servers/*.py" = ["E402", "E501"]
+"app/core/ingest_service.py" = ["E402"]
+"app/adapters/metadata_enrichers/llm_enricher.py" = ["E402", "E501"]
+"app/adapters/query_transformers/*.py" = ["E501"]
+"tests/test_architecture.py" = ["E501"]

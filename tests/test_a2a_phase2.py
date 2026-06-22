@@ -2,14 +2,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-from app.core.a2a_client import A2AEvent
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -181,8 +178,9 @@ class TestA2ALegalResearchServer:
 
     def test_error_stream(self):
         pytest.importorskip("langchain_core")
-        from app.agents.a2a_servers.legal_research_server import _error_stream
         import asyncio
+
+        from app.agents.a2a_servers.legal_research_server import _error_stream
 
         async def collect():
             events = []
@@ -232,8 +230,9 @@ class TestA2ACitationCheckerServer:
 
     def test_error_stream(self):
         pytest.importorskip("langchain_core")
-        from app.agents.a2a_servers.citation_checker_server import _error_stream
         import asyncio
+
+        from app.agents.a2a_servers.citation_checker_server import _error_stream
 
         async def collect():
             events = []

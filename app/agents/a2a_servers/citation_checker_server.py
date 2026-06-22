@@ -73,6 +73,8 @@ _embeddings = create_embeddings()
 _vector_store = create_vector_store(embeddings=_embeddings)
 _llm = create_llm()
 
+from datetime import UTC
+
 from app.agents.citation_checker_agent import CitationCheckerAgent
 
 _citation_agent = CitationCheckerAgent(_vector_store, _llm.get_chat_model())
@@ -156,7 +158,7 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
 
 def _now() -> str:
     from datetime import datetime, timezone
-    return datetime.now(timezone.UTC if hasattr(timezone, "UTC") else timezone.utc).isoformat()
+    return datetime.now(timezone.UTC if hasattr(timezone, "UTC") else UTC).isoformat()
 
 
 async def _error_stream(task_id: str, message: str):

@@ -1,7 +1,7 @@
 from __future__ import annotations
+
 import asyncio
 import logging
-from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +10,6 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.ports.metadata_enrichment import MetadataEnrichmentPort
-
 
 _ENRICH_TIMEOUT = 30.0
 
@@ -42,7 +41,7 @@ class LLMEnricherAdapter(MetadataEnrichmentPort):
             return content[:self._max_content_length] + "..."
         return content
 
-    async def enrich(self, documents: List[Document]) -> List[Document]:
+    async def enrich(self, documents: list[Document]) -> list[Document]:
         async def _enrich_doc(doc: Document) -> None:
             content = self._truncate(doc.page_content)
             try:

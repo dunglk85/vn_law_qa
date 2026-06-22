@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import List
 
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
@@ -25,7 +24,7 @@ class SemanticChunkerAdapter(ChunkingPort):
         self._breakpoint_threshold_type = breakpoint_threshold_type
         self._breakpoint_threshold_amount = breakpoint_threshold_amount
 
-    def chunk(self, documents: List[Document]) -> List[Document]:
+    def chunk(self, documents: list[Document]) -> list[Document]:
         splitter = SemanticChunker(
             embeddings=self._embeddings,
             breakpoint_threshold_type=self._breakpoint_threshold_type,

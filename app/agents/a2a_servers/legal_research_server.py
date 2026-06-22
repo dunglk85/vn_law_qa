@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
 from app.core.models import Article
-from app.factory import create_llm, create_retriever, create_vector_store
+from app.factory import create_embeddings, create_llm, create_retriever, create_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,8 @@ _embeddings = create_embeddings()
 _vector_store = create_vector_store(embeddings=_embeddings)
 _retriever = create_retriever(vector_store=_vector_store)
 _llm = create_llm()
+
+from datetime import UTC
 
 from app.agents.legal_research_agent import LegalResearchAgent
 
@@ -132,7 +134,7 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
 
 def _now() -> str:
     from datetime import datetime, timezone
-    return datetime.now(timezone.UTC if hasattr(timezone, "UTC") else timezone.utc).isoformat()
+    return datetime.now(timezone.UTC if hasattr(timezone, "UTC") else UTC).isoformat()
 
 
 async def _error_stream(task_id: str, message: str):

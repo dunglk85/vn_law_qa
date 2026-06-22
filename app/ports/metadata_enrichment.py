@@ -1,6 +1,6 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import List
 
 from langchain_core.documents import Document
 
@@ -14,7 +14,7 @@ class MetadataEnrichmentPort(ABC):
     """
 
     @abstractmethod
-    async def enrich(self, documents: List[Document]) -> List[Document]:
+    async def enrich(self, documents: list[Document]) -> list[Document]:
         """Enrich documents with additional metadata.
 
         Args:

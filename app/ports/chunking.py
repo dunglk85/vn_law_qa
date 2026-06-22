@@ -1,6 +1,6 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import List
 
 from langchain_core.documents import Document
 
@@ -14,6 +14,6 @@ class ChunkingPort(ABC):
     """
 
     @abstractmethod
-    def chunk(self, documents: List[Document]) -> List[Document]:
+    def chunk(self, documents: list[Document]) -> list[Document]:
         """Split documents into smaller chunks."""
         ...

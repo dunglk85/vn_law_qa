@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import List
 
 from app.ports.query_transformer import QueryTransformerPort
 
@@ -10,5 +9,5 @@ class NoneQueryTransformerAdapter(QueryTransformerPort):
     Use by setting QUERY_TRANSFORMER_TYPE=none in .env.
     """
 
-    async def transform(self, query: str) -> List[str]:
+    async def transform(self, query: str) -> list[str]:
         return [query]

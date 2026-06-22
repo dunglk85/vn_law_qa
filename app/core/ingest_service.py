@@ -6,21 +6,21 @@ It depends only on VectorStorePort, ChunkingPort, RetrieverPort, and
 MetadataEnrichmentPort (the abstract interfaces).
 """
 from __future__ import annotations
+
 import glob
 import logging
 import os
 import traceback
-from typing import List
 
 logger = logging.getLogger(__name__)
 
-from langchain_core.documents import Document
 from langchain_community.document_loaders import (
-    UnstructuredMarkdownLoader,
-    PyMuPDFLoader,
     Docx2txtLoader,
+    PyMuPDFLoader,
     TextLoader,
+    UnstructuredMarkdownLoader,
 )
+from langchain_core.documents import Document
 
 # Patch unstructured to skip NLTK download check (we pre-bundle the data)
 try:
@@ -30,11 +30,10 @@ except ImportError:
     pass
 
 from app.config import config
-from app.ports.vector_store import VectorStorePort
 from app.ports.chunking import ChunkingPort
-from app.ports.retriever import RetrieverPort
 from app.ports.metadata_enrichment import MetadataEnrichmentPort
-
+from app.ports.retriever import RetrieverPort
+from app.ports.vector_store import VectorStorePort
 
 # --------------------------------------------------------------------------- #
 # File loading                                                                 #
@@ -43,7 +42,7 @@ from app.ports.metadata_enrichment import MetadataEnrichmentPort
 async def _load_docs(
     base: str = config.data_dir,
     enricher: MetadataEnrichmentPort | None = None,
-) -> List[Document]:
+) -> list[Document]:
     """Recursively load all supported files under *base* into Documents.
 
     Args:
@@ -53,7 +52,7 @@ async def _load_docs(
     Returns:
         List of documents with metadata (category, source, and any enrichment).
     """
-    docs: List[Document] = []
+    docs: list[Document] = []
 
     for path in glob.glob(os.path.join(base, "**", "*"), recursive=True):
         if os.path.isdir(path) or os.path.basename(path).startswith("."):
@@ -64,7 +63,7 @@ async def _load_docs(
         category = relative.split(os.sep)[0] if os.sep in relative else "general"
 
         try:
-            loaded: List[Document] = []
+            loaded: list[Document] = []
             match ext:
                 case ".md":
                     loaded = UnstructuredMarkdownLoader(path).load()

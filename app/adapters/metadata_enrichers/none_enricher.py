@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import List
 
 from langchain_core.documents import Document
 
@@ -12,5 +11,5 @@ class NoneEnricherAdapter(MetadataEnrichmentPort):
     Use by setting METADATA_ENRICHER_TYPE=none in .env.
     """
 
-    async def enrich(self, documents: List[Document]) -> List[Document]:
+    async def enrich(self, documents: list[Document]) -> list[Document]:
         return documents

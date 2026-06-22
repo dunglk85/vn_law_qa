@@ -1,11 +1,9 @@
 from __future__ import annotations
-from typing import List
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.ports.query_transformer import QueryTransformerPort
-
 
 _HYDE_PROMPT = ChatPromptTemplate.from_messages([
     ("system", "You are a helpful assistant. Generate a brief, factual answer to the question."),
@@ -24,7 +22,7 @@ class HyDEQueryTransformerAdapter(QueryTransformerPort):
     def __init__(self, llm: BaseChatModel) -> None:
         self._llm = llm
 
-    async def transform(self, query: str) -> List[str]:
+    async def transform(self, query: str) -> list[str]:
         chain = _HYDE_PROMPT | self._llm
         result = await chain.ainvoke({"question": query})
         hypothetical_answer = result.content.strip()

@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import List
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -18,7 +17,7 @@ class RecursiveChunkerAdapter(ChunkingPort):
         self._chunk_size = chunk_size
         self._chunk_overlap = chunk_overlap
 
-    def chunk(self, documents: List[Document]) -> List[Document]:
+    def chunk(self, documents: list[Document]) -> list[Document]:
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=self._chunk_size,
             chunk_overlap=self._chunk_overlap,

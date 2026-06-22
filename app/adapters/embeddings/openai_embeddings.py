@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from langchain_openai import OpenAIEmbeddings
 
 from app.ports.embeddings import EmbeddingsPort

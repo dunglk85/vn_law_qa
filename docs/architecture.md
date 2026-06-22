@@ -174,6 +174,9 @@ company-knowledge-assistant/
 │       ├── router.py          # /auth/token, /auth/refresh (JWT + refresh tokens)
 │       ├── jwt.py             # Token create/decode/validate
 │       └── dependencies.py    # require_role(), get_current_user()
+│   └── static/                # Demo-only frontend (not production UI)
+│       ├── index.html         # Single-page query interface for testing
+│       └── style.css          # Basic styling — no UX spec exists
 ├── tests/
 │   └── test_architecture.py   # 9 architectural boundary tests
 │   └── test_rate_limiter.py   # Unit tests for memory & Redis rate limiters
@@ -449,6 +452,7 @@ adapter isolation, agent import rules, and Docker hardening.
 | No Alembic auto-migration on container startup | Medium | Add entrypoint script |
 | No unit tests for RAG services, agents, adapters | Medium | Coverage gap |
 | `pgweb` exposed without auth on port 8081 | Low | Dev-only; add basic auth for staging |
+| `app/static/` frontend has no UX spec | Low | Demo-only; not intended for production end users |
 
 ## 12. Data Model
 

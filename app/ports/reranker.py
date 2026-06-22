@@ -1,6 +1,6 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from langchain_core.documents.compressor import BaseDocumentCompressor
 
@@ -14,6 +14,6 @@ class RerankerPort(ABC):
     """
 
     @abstractmethod
-    def get_compressor(self) -> Optional[BaseDocumentCompressor]:
+    def get_compressor(self) -> BaseDocumentCompressor | None:
         """Return a LangChain BaseDocumentCompressor, or None to skip reranking."""
         ...

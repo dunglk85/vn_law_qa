@@ -1,6 +1,6 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import List, Optional
 
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
@@ -15,7 +15,7 @@ class VectorStorePort(ABC):
     """
 
     @abstractmethod
-    async def add_documents(self, documents: List[Document]) -> None:
+    async def add_documents(self, documents: list[Document]) -> None:
         """Embed and persist a list of documents."""
         ...
 
@@ -24,18 +24,18 @@ class VectorStorePort(ABC):
         self,
         query: str,
         k: int,
-        filter: Optional[dict] = None,
-    ) -> List[Document]:
+        filter: dict | None = None,
+    ) -> list[Document]:
         """Return the top-k most similar documents for *query*."""
         ...
 
     @abstractmethod
-    async def get_documents_by_ids(self, ids: list[str]) -> List[Document]:
+    async def get_documents_by_ids(self, ids: list[str]) -> list[Document]:
         """Return a list of documents by their unique IDs."""
         ...
 
     @abstractmethod
-    def as_retriever(self, search_kwargs: Optional[dict] = None) -> BaseRetriever:
+    def as_retriever(self, search_kwargs: dict | None = None) -> BaseRetriever:
         """Return a LangChain BaseRetriever for chain composition."""
         ...
 

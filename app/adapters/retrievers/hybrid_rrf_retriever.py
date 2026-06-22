@@ -1,10 +1,9 @@
 from __future__ import annotations
-from typing import List, Optional
 
+from langchain_community.retrievers import BM25Retriever
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
-from langchain_community.retrievers import BM25Retriever
 
 from app.ports.retriever import RetrieverPort
 from app.ports.vector_store import VectorStorePort
@@ -19,7 +18,7 @@ class _HybridRRFRetriever(BaseRetriever):
 
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
-    ) -> List[Document]:
+    ) -> list[Document]:
         self._sparse_retriever.k = self._k * 2
         dense_docs = self._dense_retriever.invoke(query)
         sparse_docs = self._sparse_retriever.invoke(query)
@@ -43,7 +42,7 @@ class _HybridRRFRetriever(BaseRetriever):
 
     async def _aget_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
-    ) -> List[Document]:
+    ) -> list[Document]:
         return self._get_relevant_documents(query, run_manager=run_manager)
 
 
@@ -60,12 +59,12 @@ class HybridRRFRetrieverAdapter(RetrieverPort):
         self._k = k
         self._rrf_k = rrf_k
         self._retrieval_k = k
-        self._bm25: Optional[BM25Retriever] = None
+        self._bm25: BM25Retriever | None = None
 
-    def build_index(self, documents: List[Document]) -> None:
+    def build_index(self, documents: list[Document]) -> None:
         self._bm25 = BM25Retriever.from_documents(documents)
 
-    def get_retriever(self, search_kwargs: Optional[dict] = None) -> BaseRetriever:
+    def get_retriever(self, search_kwargs: dict | None = None) -> BaseRetriever:
         if self._bm25 is None:
             raise RuntimeError("HybridRRFRetrieverAdapter: index not built. Call build_index() first.")
         kwargs = search_kwargs or {"k": self._retrieval_k}

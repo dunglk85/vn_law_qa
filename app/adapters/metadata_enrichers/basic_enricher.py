@@ -1,6 +1,6 @@
 from __future__ import annotations
+
 import os
-from typing import List
 
 from langchain_core.documents import Document
 
@@ -13,7 +13,7 @@ class BasicEnricherAdapter(MetadataEnrichmentPort):
     Extracts metadata from file paths without external dependencies.
     """
 
-    async def enrich(self, documents: List[Document]) -> List[Document]:
+    async def enrich(self, documents: list[Document]) -> list[Document]:
         for doc in documents:
             source = doc.metadata.get("source", "")
             if source:

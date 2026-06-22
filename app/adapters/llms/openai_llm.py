@@ -1,6 +1,7 @@
 from __future__ import annotations
-from langchain_openai import ChatOpenAI
+
 from langchain_core.language_models import BaseChatModel
+from langchain_openai import ChatOpenAI
 
 from app.ports.llm import LLMPort
 

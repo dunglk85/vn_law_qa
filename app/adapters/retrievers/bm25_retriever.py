@@ -1,10 +1,9 @@
 from __future__ import annotations
-from typing import List, Optional
 
+from langchain_community.retrievers import BM25Retriever
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
-from langchain_community.retrievers import BM25Retriever
 
 from app.ports.retriever import RetrieverPort
 
@@ -16,13 +15,13 @@ class _BM25LangChainRetriever(BaseRetriever):
 
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
-    ) -> List[Document]:
+    ) -> list[Document]:
         self._bm25.k = self._k
         return self._bm25.invoke(query)
 
     async def _aget_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
-    ) -> List[Document]:
+    ) -> list[Document]:
         return self._get_relevant_documents(query, run_manager=run_manager)
 
 
@@ -35,12 +34,12 @@ class BM25RetrieverAdapter(RetrieverPort):
 
     def __init__(self, k: int = 5) -> None:
         self._k = k
-        self._bm25: Optional[BM25Retriever] = None
+        self._bm25: BM25Retriever | None = None
 
-    def build_index(self, documents: List[Document]) -> None:
+    def build_index(self, documents: list[Document]) -> None:
         self._bm25 = BM25Retriever.from_documents(documents)
 
-    def get_retriever(self, search_kwargs: Optional[dict] = None) -> BaseRetriever:
+    def get_retriever(self, search_kwargs: dict | None = None) -> BaseRetriever:
         if self._bm25 is None:
             raise RuntimeError("BM25RetrieverAdapter: index not built. Call build_index() first.")
         wrapper = _BM25LangChainRetriever()

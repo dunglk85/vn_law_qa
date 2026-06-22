@@ -1,7 +1,7 @@
 from __future__ import annotations
+
 import asyncio
 import logging
-from typing import List
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
@@ -37,7 +37,7 @@ class HyDEDecompositionQueryTransformerAdapter(QueryTransformerPort):
     def __init__(self, llm: BaseChatModel) -> None:
         self._llm = llm
 
-    async def transform(self, query: str) -> List[str]:
+    async def transform(self, query: str) -> list[str]:
         hyde_chain = _HYDE_PROMPT | self._llm
         decomposition_chain = _DECOMPOSITION_PROMPT | self._llm
 
@@ -53,7 +53,7 @@ class HyDEDecompositionQueryTransformerAdapter(QueryTransformerPort):
         hypothetical_answer = hyde_result.content.strip()
         decomposition_text = decomposition_result.content.strip()
 
-        subqueries: List[str] = []
+        subqueries: list[str] = []
         for line in decomposition_text.split("\n"):
             line = line.strip()
             if line and line[0].isdigit() and "." in line:

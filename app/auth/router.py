@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from app.auth.jwt import TOKEN_SCHEMA, create_access_token, create_refresh_token, decode_token, validate_claims
+from app.auth.jwt import TOKEN_SCHEMA, create_access_token, create_refresh_token
 from app.config import config
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class _RefreshTokenStore:
         data = {"user_id": user_id, "expires": expires.isoformat()}
         r = await self._get_redis()
         if r is not None:
-            ttl = max(int((expires - datetime.now(timezone.utc)).total_seconds()), 1)
+            ttl = max(int((expires - datetime.now(UTC)).total_seconds()), 1)
             await r.setex(self._key(token), ttl, json.dumps(data))
         else:
             self._memory[token] = {"user_id": user_id, "expires": expires}
@@ -90,7 +90,7 @@ async def login(req: TokenRequest) -> TokenResponse:
         )
     access_token = create_access_token(user_id=req.username, tenant_id="default", roles=["admin"])
     refresh_token = create_refresh_token()
-    expires = datetime.now(timezone.utc) + timedelta(days=config.refresh_token_expire_days)
+    expires = datetime.now(UTC) + timedelta(days=config.refresh_token_expire_days)
     await _refresh_store.add(refresh_token, req.username, expires)
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
@@ -103,7 +103,7 @@ async def refresh(req: RefreshRequest) -> TokenResponse:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
-    if datetime.now(timezone.utc) > stored["expires"]:
+    if datetime.now(UTC) > stored["expires"]:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token expired, please log in again",
@@ -111,6 +111,6 @@ async def refresh(req: RefreshRequest) -> TokenResponse:
     user_id = stored["user_id"]
     new_access = create_access_token(user_id=user_id, tenant_id="default", roles=["admin"])
     new_refresh = create_refresh_token()
-    expires = datetime.now(timezone.utc) + timedelta(days=config.refresh_token_expire_days)
+    expires = datetime.now(UTC) + timedelta(days=config.refresh_token_expire_days)
     await _refresh_store.add(new_refresh, user_id, expires)
     return TokenResponse(access_token=new_access, refresh_token=new_refresh)

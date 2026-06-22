@@ -1,11 +1,9 @@
 from __future__ import annotations
-from typing import List
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.ports.query_transformer import QueryTransformerPort
-
 
 _DECOMPOSITION_PROMPT = ChatPromptTemplate.from_messages([
     ("system", "You are a helpful assistant. Break down complex questions into 2-3 simpler sub-questions that can be answered independently. Return each sub-question on a new line, prefixed with a number and period (e.g., '1. ...')."),
@@ -24,12 +22,12 @@ class DecompositionQueryTransformerAdapter(QueryTransformerPort):
     def __init__(self, llm: BaseChatModel) -> None:
         self._llm = llm
 
-    async def transform(self, query: str) -> List[str]:
+    async def transform(self, query: str) -> list[str]:
         chain = _DECOMPOSITION_PROMPT | self._llm
         result = await chain.ainvoke({"question": query})
         text = result.content.strip()
 
-        subqueries: List[str] = []
+        subqueries: list[str] = []
         for line in text.split("\n"):
             line = line.strip()
             if line and line[0].isdigit() and "." in line:

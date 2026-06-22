@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from jose import JWTError, jwt
 
 from app.config import config
 
-
 TOKEN_SCHEMA = "Bearer"
 
 
 def create_access_token(user_id: str, tenant_id: str = "", roles: list[str] | None = None) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": user_id,
         "iat": now,
