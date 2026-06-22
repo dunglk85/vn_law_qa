@@ -10,7 +10,6 @@ This module only handles loading, embedding, and storage.
 from __future__ import annotations
 
 import logging
-import traceback
 
 from langchain_core.documents import Document
 
@@ -77,8 +76,7 @@ async def run_ingest(
     try:
         await vector_store.add_documents(docs)
     except Exception:
-        logger.error("INGEST ERROR: embedding/storage failed")
-        traceback.print_exc()
+        logger.exception("INGEST ERROR: embedding/storage failed")
         raise
 
     logger.info("INGEST: %d chunks stored.", len(docs))

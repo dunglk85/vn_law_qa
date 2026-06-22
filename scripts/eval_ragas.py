@@ -14,6 +14,7 @@ from ragas.testset import TestsetGenerator
 
 from app.config import config
 from app.core.ingest_service import _load_docs
+from app.factory import create_document_loader
 
 
 BASE_DIR = Path(__file__).parent.parent
@@ -59,7 +60,8 @@ def generate_testset(
 ) -> None:
     """Generate test Q&A pairs from source documents using RAGAS TestsetGenerator."""
     print(f"📄 Loading documents from {config.data_dir}...")
-    docs = asyncio.run(_load_docs())
+    loader = create_document_loader()
+    docs = _load_docs(loader=loader, data_dir=config.data_dir)
     print(f"📄 Loaded {len(docs)} documents")
 
     if not docs:

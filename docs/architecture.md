@@ -350,7 +350,6 @@ stateDiagram-v2
 | **Admin creds** | `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars (not hardcoded). Defaults warned at startup. |
 | **JWT secret** | Configurable via `JWT_SECRET`. Startup warning issued if default used. |
 | **Refresh tokens** | Redis-backed `_RefreshTokenStore` with in-memory fallback. Tokens expire per `REFRESH_TOKEN_EXPIRE_DAYS`. |
-| **Ingestion auth** | Optional `X-Api-Key` header check via `INGEST_API_KEY` env var. Also requires `require_role("admin")`. |
 | **Rate limiting** | Redis-backed sliding window rate limiter per IP, with in-memory fallback. |
 | **Container user** | Dockerfile runs as `appuser` (non-root). |
 

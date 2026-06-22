@@ -20,10 +20,7 @@
   <div class="container">
     <header class="toolbar">
       <div class="brand">Company Knowledge Assistant</div>
-      <div class="actions">
-        <span id="ingestStatus" class="pill pill-idle">Idle</span>
-        <button id="ingestBtn">Ingest Data</button>
-      </div>
+      <div class="actions"></div>
     </header>
 
     <p class="subtitle">Ask a question about your company documents.</p>
@@ -53,8 +50,6 @@
   </div>
 
   <script>
-    const ingestBtn = document.getElementById('ingestBtn');
-    const ingestStatus = document.getElementById('ingestStatus');
     const askBtn = document.getElementById('askBtn');
     const clearBtn = document.getElementById('clearBtn');
     const textarea = document.getElementById('question');
@@ -62,31 +57,6 @@
     const respCard = document.getElementById('responseCard');
     const sourcesList = document.getElementById('sources');
     const sourcesBlock = document.getElementById('sourcesBlock');
-
-    function setStatus(s, extra) {
-      ingestStatus.className = 'pill';
-      if (s === 'running') ingestStatus.classList.add('pill-running');
-      else if (s === 'succeeded') ingestStatus.classList.add('pill-ok');
-      else if (s === 'failed') ingestStatus.classList.add('pill-err');
-      else ingestStatus.classList.add('pill-idle');
-      ingestStatus.textContent = s.charAt(0).toUpperCase() + s.slice(1) + (extra ? ` (${extra})` : '');
-    }
-
-    async function refreshStatus() {
-      try {
-        const r = await fetch('/ingest/status');
-        const d = await r.json();
-        if (!d.ok) return;
-        const st = d.status || 'idle';
-        const extra = st === 'failed'
-          ? (d.error || 'error')
-          : (d.stats ? `chunks: ${d.stats.chunks}` : '');
-        setStatus(st, extra);
-      } catch(e) {
-        setStatus('failed', 'status error');
-      }
-    }
-
 
 function renderSources(sources) {
   if (!sources || !sources.length) {
@@ -102,29 +72,6 @@ function renderSources(sources) {
     </div>
   `).join('');
 }
-
-    ingestBtn.addEventListener('click', async () => {
-      ingestBtn.disabled = true;
-      setStatus('running');
-      try {
-        const res = await fetch('/ingest', { method: 'POST' });
-        await refreshStatus(); // immediate peek
-        if (res.ok) {
-          const poll = setInterval(async () => {
-            await refreshStatus();
-            if (!ingestStatus.classList.contains('pill-running')) {
-              clearInterval(poll);
-              ingestBtn.disabled = false;
-            }
-          }, 2000);
-        } else {
-          ingestBtn.disabled = false;
-        }
-      } catch (e) {
-        setStatus('failed', e?.message || 'ingest error');
-        ingestBtn.disabled = false;
-      }
-    });
 
     async function submitQuestion() {
       const q = textarea.value.trim();
@@ -162,8 +109,6 @@ function renderSources(sources) {
       respCard.classList.add("hidden");
     });
 
-    // initial status on load
-    refreshStatus();
   </script>
 </body>
 </html>

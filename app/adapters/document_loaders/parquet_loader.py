@@ -77,23 +77,28 @@ class ParquetLoaderAdapter(DocumentLoaderPort):
 
     def _load_law_chunks(self, path: Path) -> list[Document]:
         """Load law document chunks from Parquet."""
-        df = pd.read_parquet(path)
+        try:
+            df = pd.read_parquet(path)
+        except Exception as exc:
+            logger.error("Failed to read Parquet file %s: %s", path, exc)
+            return []
+
         logger.info("Loading %d law chunks from %s", len(df), path)
 
         docs: list[Document] = []
         for _, row in df.iterrows():
             doc = Document(
-                page_content=str(row.get("text", "")),
+                page_content=str(row.get("text", "") or ""),
                 metadata={
                     "source": "law-crawler",
-                    "chunk_id": str(row.get("chunk_id", "")),
-                    "article_id": str(row.get("article_id", "")),
-                    "title": str(row.get("title", "")),
-                    "chude": str(row.get("chude", "")),
-                    "demuc": str(row.get("demuc", "")),
-                    "chuong": str(row.get("chuong", "")),
-                    "chunk_index": int(row.get("chunk_index", 0)),
-                    "total_chunks": int(row.get("total_chunks", 1)),
+                    "chunk_id": str(row.get("chunk_id", "") or ""),
+                    "article_id": str(row.get("article_id", "") or ""),
+                    "title": str(row.get("title", "") or ""),
+                    "chude": str(row.get("chude", "") or ""),
+                    "demuc": str(row.get("demuc", "") or ""),
+                    "chuong": str(row.get("chuong", "") or ""),
+                    "chunk_index": int(row.get("chunk_index", 0) or 0),
+                    "total_chunks": int(row.get("total_chunks", 1) or 1),
                     "category": "law",
                 },
             )
@@ -103,21 +108,28 @@ class ParquetLoaderAdapter(DocumentLoaderPort):
 
     def _load_vbqppl_chunks(self, path: Path) -> list[Document]:
         """Load VBQPPL document chunks from Parquet."""
-        df = pd.read_parquet(path)
+        try:
+            df = pd.read_parquet(path)
+        except Exception as exc:
+            logger.error("Failed to read Parquet file %s: %s", path, exc)
+            return []
+
         logger.info("Loading %d VBQPPL chunks from %s", len(df), path)
 
         docs: list[Document] = []
         for _, row in df.iterrows():
+            parent_val = row.get("parent_id")
+            parent_str = str(parent_val) if pd.notna(parent_val) and parent_val is not None else ""
             doc = Document(
-                page_content=str(row.get("text", "")),
+                page_content=str(row.get("text", "") or ""),
                 metadata={
                     "source": "law-crawler",
-                    "chunk_id": str(row.get("chunk_id", "")),
-                    "source_id": str(row.get("source_id", "")),
-                    "source_type": str(row.get("source_type", "vbqppl")),
-                    "parent_id": str(row.get("parent_id", "")) if pd.notna(row.get("parent_id")) else "",
-                    "chunk_index": int(row.get("chunk_index", 0)),
-                    "total_chunks": int(row.get("total_chunks", 1)),
+                    "chunk_id": str(row.get("chunk_id", "") or ""),
+                    "source_id": str(row.get("source_id", "") or ""),
+                    "source_type": str(row.get("source_type", "vbqppl") or "vbqppl"),
+                    "parent_id": parent_str,
+                    "chunk_index": int(row.get("chunk_index", 0) or 0),
+                    "total_chunks": int(row.get("total_chunks", 1) or 1),
                     "category": "vbqppl",
                 },
             )
