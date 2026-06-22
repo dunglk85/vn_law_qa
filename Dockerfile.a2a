@@ -14,7 +14,7 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --user --timeout 600 --retries 20 -r requirements.txt
+    pip install --no-cache-dir --user --timeout 600 --retries 20 -r requirements.txt
 
 # ---- Runtime ----
 FROM python:3.12-slim AS runtime
@@ -25,9 +25,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+
 WORKDIR /app
 
-COPY --from=builder /root/.local /root/.local
+COPY --from=builder --chown=appuser:appuser /root/.local /root/.local
 
 ENV PATH=/root/.local/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -37,12 +39,11 @@ ENV PATH=/root/.local/bin:$PATH \
 ARG A2A_AGENT=legal-research
 ENV A2A_AGENT=${A2A_AGENT}
 
-COPY app/ app/
+COPY --chown=appuser:appuser app/ /app/app/
+COPY --chown=appuser:appuser --chmod=755 scripts/a2a-entrypoint.sh /app/entrypoint.sh
 
-RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser \
-    && chown -R appuser:appuser /app /root/.local
 USER appuser
 
-EXPOSE 8101
+EXPOSE 8101 8102 8103
 
-CMD python -c "import os, sys; agent = os.environ.get('A2A_AGENT', 'legal-research'); port = {'legal-research': '8101', 'citation-checker': '8102', 'response-synthesizer': '8103'}[agent]; import uvicorn; uvicorn.run(f'app.agents.a2a_servers.{agent}_server:app', host='0.0.0.0', port=int(port))"
+ENTRYPOINT ["/app/entrypoint.sh"]

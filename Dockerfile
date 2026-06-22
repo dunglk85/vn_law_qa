@@ -14,7 +14,7 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip && pip install --user --timeout 600 --retries 20 -r requirements.txt
+    pip install --no-cache-dir --user --timeout 600 --retries 20 -r requirements.txt
 
 # ---- Runtime ----
 FROM python:3.12-slim AS runtime
@@ -25,19 +25,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+
 WORKDIR /app
 
-COPY --from=builder /root/.local /root/.local
+COPY --from=builder --chown=appuser:appuser /root/.local /root/.local
 
 ENV PATH=/root/.local/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-COPY app/ /app/app/
-COPY data/ /app/data/
+COPY --chown=appuser:appuser app/ /app/app/
 
-RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser \
-    && chown -R appuser:appuser /app /root/.local
 USER appuser
 
 EXPOSE 8000

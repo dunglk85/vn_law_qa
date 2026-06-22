@@ -1,6 +1,6 @@
 beautifulsoup4>=4.12,<5
-pandas>=2.1,<3
-pyarrow>=14,<19
+pandas>=2.1.0,<2.2.0
+pyarrow>=14.0,<15.0
 pyyaml>=6.0,<7
 requests>=2.31,<3
-dvc>=3.0,<4
+dvc>=3.0,<3.60

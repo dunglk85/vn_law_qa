@@ -22,6 +22,7 @@ node_modules
 law-crawler/
 tests/
 seed/
+data/
 init-db/
 docker-compose.yml
 docker-compose.override.yml
