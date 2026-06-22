@@ -1,36 +1,46 @@
-# ---- Base ----
-FROM python:3.11-slim AS base
+# ---- Builder ----
+FROM python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     NLTK_DATA=/app/nltk_data
 
-# System deps (curl for healthchecks/logs; build deps minimal since we use psycopg binary)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl ca-certificates \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy only requirements first (better layer caching)
-COPY requirements.txt /app/requirements.txt
-RUN pip install --upgrade pip && pip install --timeout 600 --retries 20 -r requirements.txt
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install --user --timeout 600 --retries 20 -r requirements.txt
 
-# Pre-download NLTK data
 RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('averaged_perceptron_tagger'); nltk.download('averaged_perceptron_tagger_eng')"
 
-# Copy project files
+# ---- Runtime ----
+FROM python:3.11-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /root/.local /root/.local
+COPY --from=builder /app/nltk_data /app/nltk_data
+
+ENV PATH=/root/.local/bin:$PATH \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    NLTK_DATA=/app/nltk_data
+
 COPY app/ /app/app/
 COPY data/ /app/data/
 
-# Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser \
-    && chown -R appuser:appuser /app
+    && chown -R appuser:appuser /app /root/.local
 USER appuser
 
-# Expose FastAPI port
 EXPOSE 8000
 
-# Default command: serve API (no --reload in production)
 CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]
