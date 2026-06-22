@@ -63,6 +63,9 @@ class AppConfig:
     query_transformer_type: str = _str_env("QUERY_TRANSFORMER_TYPE", "none")
     # none | hyde | decomposition | hyde_decomposition
 
+    document_loader_type: str = _str_env("DOCUMENT_LOADER_TYPE", "parquet")
+    # parquet
+
     rag_mode: str = _str_env("RAG_MODE", "legacy")
     # legacy (RAGService) | agentic (AgenticService)
 

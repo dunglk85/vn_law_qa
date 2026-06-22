@@ -276,10 +276,15 @@ def create_query_transformer(llm: LLMPort) -> QueryTransformerPort:
     return _resolve("query_transformer", config.query_transformer_type, **kw)
 
 
-def create_document_loader() -> DocumentLoaderPort:
+@_register("document_loader", "parquet")
+def _create_parquet_document_loader() -> DocumentLoaderPort:
     from app.adapters.document_loaders.parquet_loader import ParquetLoaderAdapter
 
     return ParquetLoaderAdapter()
+
+
+def create_document_loader() -> DocumentLoaderPort:
+    return _resolve("document_loader", config.document_loader_type)
 
 
 # --------------------------------------------------------------------------- #

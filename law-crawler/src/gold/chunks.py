@@ -27,6 +27,12 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
         raise ValueError(
             f"chunk_size ({chunk_size}) must be greater than overlap ({overlap})"
         )
+    min_step = max(1, chunk_size // 10)
+    if chunk_size - overlap < min_step:
+        raise ValueError(
+            f"chunk_size ({chunk_size}) minus overlap ({overlap}) = {chunk_size - overlap}, "
+            f"minimum step is {min_step} to avoid excessive chunk generation"
+        )
 
     chunks: list[str] = []
     start = 0

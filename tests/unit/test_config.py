@@ -84,6 +84,7 @@ class TestAppConfigDefaults:
         assert hasattr(config, "cache_type")
         assert hasattr(config, "retriever_type")
         assert hasattr(config, "query_transformer_type")
+        assert hasattr(config, "document_loader_type")
         assert hasattr(config, "rag_mode")
         assert hasattr(config, "data_dir")
 

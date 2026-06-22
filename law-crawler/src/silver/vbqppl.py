@@ -71,6 +71,8 @@ def split_document(id_vb: str, contents: str, start_id: int) -> tuple[list[dict]
 def main() -> None:
     logger.info("=== Silver: VBQPPL document splitting ===")
 
+    SILVER_VBQPPL.mkdir(parents=True, exist_ok=True)
+
     vbpl_path = BRONZE_VBQPPL / "vbpl.parquet"
     if not vbpl_path.exists():
         logger.warning("VBQPPL bronze not found at %s", vbpl_path)
@@ -104,7 +106,10 @@ def main() -> None:
             tmp_path.replace(out_path)
         except OSError:
             import shutil
-            shutil.move(str(tmp_path), str(out_path))
+            try:
+                shutil.move(str(tmp_path), str(out_path))
+            except OSError:
+                logger.exception("Failed to move %s to %s", tmp_path, out_path)
         logger.info("Saved %d split records", len(df_out))
 
     logger.info("Silver VBQPPL done")

@@ -69,7 +69,11 @@ def main() -> None:
                         help="Run from this layer onward")
     args = parser.parse_args()
 
-    run_pipeline(from_stage=args.from_stage, stage_only=args.stage)
+    try:
+        run_pipeline(from_stage=args.from_stage, stage_only=args.stage)
+    except Exception as exc:
+        logger.error("%s", exc)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

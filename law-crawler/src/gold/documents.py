@@ -35,10 +35,6 @@ def build_phap_dien_documents() -> pd.DataFrame:
         logger.warning("No điều data — skipping gold Pháp Điển")
         return pd.DataFrame()
 
-    # Resolve Peewee FK naming: silver may store FK values with _id suffix
-    demuc_fk = "demuc_id" if "demuc_id" in df_demuc.columns else "demuc_id_id"
-    chuong_fk = "chuong_id" if "chuong_id" in df_chuong.columns else "chuong_id_id"
-
     # Join: dieu → chuong → demuc → chude
     if not df_chuong.empty:
         df_dieu = df_dieu.merge(

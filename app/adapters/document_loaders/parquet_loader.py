@@ -16,11 +16,18 @@ from app.ports.document_loader import DocumentLoaderPort
 logger = logging.getLogger(__name__)
 
 
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
 class ParquetLoaderAdapter(DocumentLoaderPort):
     """Loads pre-chunked documents from Parquet files.
-    
+
     Expects gold layer output from law-crawler with the following schemas:
-    
+
     law_document_chunks.parquet:
         - chunk_id: str
         - article_id: str
@@ -31,7 +38,7 @@ class ParquetLoaderAdapter(DocumentLoaderPort):
         - chunk_index: int
         - total_chunks: int
         - text: str
-    
+
     vbqppl_chunks.parquet:
         - chunk_id: str
         - source_id: str
@@ -44,10 +51,10 @@ class ParquetLoaderAdapter(DocumentLoaderPort):
 
     def load(self, data_dir: str) -> list[Document]:
         """Load all Parquet files from the given directory.
-        
+
         Args:
             data_dir: Path to directory containing gold chunk Parquet files.
-        
+
         Returns:
             List of LangChain Document objects with metadata.
         """
@@ -104,7 +111,7 @@ class ParquetLoaderAdapter(DocumentLoaderPort):
         docs: list[Document] = []
         for _, row in df.iterrows():
             text_val = row.get("text")
-            if pd.isna(text_val) or text_val is None:
+            if pd.isna(text_val):
                 text_str = ""
             else:
                 text_str = str(text_val)
@@ -120,8 +127,8 @@ class ParquetLoaderAdapter(DocumentLoaderPort):
                     "chude": str(row.get("chude")) if pd.notna(row.get("chude")) else "",
                     "demuc": str(row.get("demuc")) if pd.notna(row.get("demuc")) else "",
                     "chuong": str(row.get("chuong")) if pd.notna(row.get("chuong")) else "",
-                    "chunk_index": int(row.get("chunk_index")) if pd.notna(row.get("chunk_index")) else 0,
-                    "total_chunks": int(row.get("total_chunks")) if pd.notna(row.get("total_chunks")) else 1,
+                    "chunk_index": _safe_int(row.get("chunk_index"), 0),
+                    "total_chunks": _safe_int(row.get("total_chunks"), 1),
                     "category": "law",
                 },
             )
@@ -142,7 +149,7 @@ class ParquetLoaderAdapter(DocumentLoaderPort):
         docs: list[Document] = []
         for _, row in df.iterrows():
             text_val = row.get("text")
-            if pd.isna(text_val) or text_val is None:
+            if pd.isna(text_val):
                 text_str = ""
             else:
                 text_str = str(text_val)
@@ -158,8 +165,8 @@ class ParquetLoaderAdapter(DocumentLoaderPort):
                     "source_id": str(row.get("source_id")) if pd.notna(row.get("source_id")) else "",
                     "source_type": str(row.get("source_type")) if pd.notna(row.get("source_type")) else "vbqppl",
                     "parent_id": parent_str,
-                    "chunk_index": int(row.get("chunk_index")) if pd.notna(row.get("chunk_index")) else 0,
-                    "total_chunks": int(row.get("total_chunks")) if pd.notna(row.get("total_chunks")) else 1,
+                    "chunk_index": _safe_int(row.get("chunk_index"), 0),
+                    "total_chunks": _safe_int(row.get("total_chunks"), 1),
                     "category": "vbqppl",
                 },
             )

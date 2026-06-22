@@ -71,9 +71,13 @@ async def run_ingest(
         dict with 'documents' and 'chunks' counts.
     """
     loop = asyncio.get_running_loop()
-    docs = await loop.run_in_executor(
-        None, _load_docs, loader, data_dir, tenant_id,
-    )
+    try:
+        docs = await loop.run_in_executor(
+            None, _load_docs, loader, data_dir, tenant_id,
+        )
+    except Exception as exc:
+        logger.exception("INGEST ERROR: document loading failed: %s", exc)
+        return {"documents": 0, "chunks": 0, "pre_chunked": True}
 
     if not docs:
         logger.error("INGEST ERROR: no documents loaded from %s", data_dir)

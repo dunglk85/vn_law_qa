@@ -169,4 +169,3 @@ data/
 # DVC
 .dvc/
 dvc.lock
-```

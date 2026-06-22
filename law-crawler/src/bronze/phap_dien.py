@@ -6,6 +6,7 @@ that happens in the Silver layer.
 """
 import json
 import sys
+import uuid
 from pathlib import Path
 
 import pandas as pd
@@ -100,7 +101,8 @@ def ingest_nodes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFra
 
         if not chuong_list:
             chuong_list.append({
-                "mapc": f"synthetic_{demuc_id}", "ten": "", "chimuc": "0",
+                "mapc": f"synthetic_{demuc_id}_{uuid.uuid4().hex[:8]}",
+                "ten": "", "chimuc": "0",
                 "stt": 0, "demuc_id": demuc_id,
             })
 

@@ -117,6 +117,8 @@ def validate_cross_references(df_lienquan: pd.DataFrame, df_dieu: pd.DataFrame) 
 def main() -> None:
     logger.info("=== Silver: Pháp Điển cleaning ===")
 
+    SILVER_PHAP_DIEN.mkdir(parents=True, exist_ok=True)
+
     datasets = {
         "chude": (clean_chude, _read_bronze("chude")),
         "demuc": (clean_demuc, _read_bronze("demuc")),

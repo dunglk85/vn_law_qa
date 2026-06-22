@@ -69,6 +69,8 @@ def fetch_document(item_id: str) -> str | None:
 def main() -> None:
     logger.info("=== Bronze: VBQPPL document crawl ===")
 
+    BRONZE_VBQPPL.mkdir(parents=True, exist_ok=True)
+
     dieu_path = BRONZE_PHAP_DIEN / "dieu.parquet"
     if not dieu_path.exists():
         logger.warning("Pháp Điển bronze not found at %s — run bronze phap_dien first", dieu_path)

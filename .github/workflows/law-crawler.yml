@@ -49,7 +49,6 @@ jobs:
           name: law-data-${{ github.run_id }}
           path: |
             law-crawler/data/gold/*.parquet
-            law-crawler/metrics/quality.json
           retention-days: 30
 
       - name: Upload metrics artifact
