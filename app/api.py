@@ -183,7 +183,7 @@ _ingest_last: dict = {
 }
 
 
-async def _ingest_job(vector_store, chunker, retriever, enricher) -> None:
+async def _ingest_job(vector_store, chunker, retriever, enricher, tenant_id=None) -> None:
     _ingest_last.update({
         "status": "running",
         "started_at": time.time(),
@@ -192,7 +192,7 @@ async def _ingest_job(vector_store, chunker, retriever, enricher) -> None:
         "error": None,
     })
     try:
-        stats = await run_ingest(vector_store, chunker, retriever, enricher)
+        stats = await run_ingest(vector_store, chunker, retriever, enricher, tenant_id=tenant_id)
         _ingest_last.update({"status": "succeeded", "finished_at": time.time(), "stats": stats})
     except Exception as e:
         _ingest_last.update({"status": "failed", "finished_at": time.time(), "error": str(e)})
@@ -236,6 +236,7 @@ async def kick_off_ingest(
             status_code=401,
         )
     global _ingest_task
+    tenant_id = _user.get("tenant_id") if isinstance(_user, dict) else None
     async with _ingest_lock:
         if _ingest_task and not _ingest_task.done():
             return JSONResponse(
@@ -248,6 +249,7 @@ async def kick_off_ingest(
                 request.app.state.chunker,
                 request.app.state.retriever,
                 request.app.state.enricher,
+                tenant_id=tenant_id,
             )
         )
     return {"ok": True, "message": "Ingestion started"}
@@ -310,7 +312,7 @@ async def ask(
                                     pass
                             break
             else:
-                answer, sources, contexts = await request.app.state.rag_service.answer(
+                answer, sources, contexts, tenant_sources = await request.app.state.rag_service.answer(
                     question=q.question,
                     category=q.category,
                     tenant_id=tenant_id,
@@ -345,6 +347,9 @@ async def ask(
         "sources": sources,
         "contexts": contexts,
     }
+
+    if tenant_sources:
+        response["tenant_sources"] = tenant_sources
 
     if reasoning_steps:
         trace_json = json.dumps(reasoning_steps, default=str)

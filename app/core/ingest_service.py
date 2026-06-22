@@ -42,15 +42,17 @@ from app.ports.vector_store import VectorStorePort
 async def _load_docs(
     base: str = config.data_dir,
     enricher: MetadataEnrichmentPort | None = None,
+    tenant_id: str | None = None,
 ) -> list[Document]:
     """Recursively load all supported files under *base* into Documents.
 
     Args:
         base: Root directory to scan for documents.
         enricher: Optional metadata enrichment strategy to apply after loading.
+        tenant_id: Optional tenant identifier for data isolation.
 
     Returns:
-        List of documents with metadata (category, source, and any enrichment).
+        List of documents with metadata (category, source, tenant_id, and any enrichment).
     """
     docs: list[Document] = []
 
@@ -79,6 +81,8 @@ async def _load_docs(
             for d in loaded:
                 d.metadata["category"] = category
                 d.metadata["source"] = path
+                if tenant_id:
+                    d.metadata["tenant_id"] = tenant_id
                 docs.append(d)
 
         except Exception:
@@ -100,6 +104,7 @@ async def run_ingest(
     chunker: ChunkingPort,
     retriever: RetrieverPort,
     enricher: MetadataEnrichmentPort | None = None,
+    tenant_id: str | None = None,
 ) -> dict:
     """Full ingestion pipeline.
 
@@ -108,11 +113,12 @@ async def run_ingest(
         chunker: Any ChunkingPort implementation injected by the caller.
         retriever: Any RetrieverPort implementation injected by the caller.
         enricher: Optional MetadataEnrichmentPort for metadata enrichment.
+        tenant_id: Optional tenant identifier for data isolation.
 
     Returns:
         dict with 'documents' and 'chunks' counts.
     """
-    docs = await _load_docs(enricher=enricher)
+    docs = await _load_docs(enricher=enricher, tenant_id=tenant_id)
 
     if not docs:
         logger.error("INGEST ERROR: no documents loaded.")

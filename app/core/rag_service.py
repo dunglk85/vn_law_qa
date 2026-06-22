@@ -115,18 +115,19 @@ class RAGService:
         question: str,
         category: str | None = None,
         tenant_id: str | None = None,
-    ) -> tuple[str, list[str], list[str]]:
-        """Run the full RAG pipeline and return (answer, sources, contexts).
+    ) -> tuple[str, list[str], list[str], dict[str, str] | None]:
+        """Run the full RAG pipeline and return (answer, sources, contexts, tenant_sources).
 
         Args:
             question: User's natural-language question.
             category: Optional metadata filter (e.g. 'guides', 'policies').
-            tenant_id: Optional tenant filter for data isolation.
+            tenant_id: Optional tenant filter for data isolation. Use "*" for admin cross-tenant.
 
         Returns:
-            answer    — LLM-generated answer string
-            sources   — sorted list of unique source file paths
-            contexts  — list of retrieved chunk texts (for evaluation)
+            answer          — LLM-generated answer string
+            sources         — sorted list of unique source file paths
+            contexts        — list of retrieved chunk texts (for evaluation)
+            tenant_sources  — dict mapping source → tenant_id (only for admin cross-tenant queries)
         """
         await self._ensure_warmup()
 
@@ -163,4 +164,14 @@ class RAGService:
         })
         contexts = [d.page_content for d in docs]
 
-        return answer, sources, contexts
+        if tenant_id == "*":
+            tenant_sources = {}
+            for d in docs:
+                src = d.metadata.get("source")
+                if src:
+                    tid = d.metadata.get("tenant_id", "unassigned")
+                    if src not in tenant_sources:
+                        tenant_sources[src] = tid
+            return answer, sources, contexts, tenant_sources
+
+        return answer, sources, contexts, None
