@@ -141,7 +141,7 @@ class RAGService:
             docs = await self._retrieve_with_transformed_queries(retriever, transformed_queries)
 
             if not docs:
-                return _NO_CONTEXT_ANSWER, [], []
+                return _NO_CONTEXT_ANSWER, [], [], None
 
             chat_model = self._llm.get_chat_model()
             doc_chain = create_stuff_documents_chain(chat_model, _PROMPT)

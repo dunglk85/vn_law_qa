@@ -27,6 +27,13 @@ class A2ARemoteClient(A2AClientRouter):
     ) -> None:
         self._agent_map = agent_map
         self._timeout = timeout
+        self._client = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout),
+            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+        )
+
+    async def close(self) -> None:
+        await self._client.aclose()
 
     def _resolve_url(self, agent: str) -> str:
         url = self._agent_map.get(agent)
@@ -84,12 +91,12 @@ class A2ARemoteClient(A2AClientRouter):
 
     async def _collect_sse_events(self, url: str, rpc_body: dict) -> list[A2AEvent]:
         events: list[A2AEvent] = []
-        async with httpx.AsyncClient(timeout=httpx.Timeout(self._timeout)) as client:
-            async with aconnect_sse(
-                client, "POST", f"{url}/",
-                json=rpc_body,
-            ) as event_source:
-                async for event in event_source.aiter_sse():
+        async with aconnect_sse(
+            self._client, "POST", f"{url}/",
+            json=rpc_body,
+        ) as event_source:
+            async for event in event_source.aiter_sse():
+                try:
                     if event.event == "task_status":
                         data = json.loads(event.data)
                         events.append(A2AEvent(type="task_status", status=data.get("status")))
@@ -100,4 +107,6 @@ class A2ARemoteClient(A2AClientRouter):
                         data = json.loads(event.data)
                         logger.error("A2A remote error: %s", data)
                         events.append(A2AEvent(type="task_status", status={"state": "failed", "error": str(data)}))
+                except json.JSONDecodeError as exc:
+                    logger.warning("A2A remote: malformed SSE event data, skipping: %s", exc)
         return events

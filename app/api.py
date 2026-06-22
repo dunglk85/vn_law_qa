@@ -57,6 +57,12 @@ async def lifespan(app: FastAPI):
     """Manage application lifecycle: startup wiring and shutdown cleanup."""
     logger.info("Starting up: initializing dependencies")
 
+    if config.langsmith_tracing and config.langsmith_api_key:
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_API_KEY"] = config.langsmith_api_key
+        os.environ["LANGCHAIN_PROJECT"] = config.langsmith_project
+        logger.info("LangSmith tracing enabled for project '%s'", config.langsmith_project)
+
     try:
         embeddings = create_embeddings()
         app.state.vector_store = create_vector_store(embeddings=embeddings)
@@ -322,6 +328,7 @@ async def ask(
     session_id = q.session_id or _user.get("sub", "anonymous") if isinstance(_user, dict) else "anonymous"
 
     quality_score = None
+    tenant_sources = None
     try:
         async with asyncio.timeout(config.ask_timeout):
             if request.app.state.agentic_service:

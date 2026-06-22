@@ -18,25 +18,29 @@ class InProcessFallbackClient(A2AClientRouter):
     async def send_task_stream(
         self, agent: str, payload: dict
     ) -> AsyncIterator[A2AEvent]:
-        if agent == "legal-research-agent":
-            query = payload["query"]
-            articles = await self._research_agent.run(query)
-            yield A2AEvent(type="task_status", status={"state": "completed"})
-            yield A2AEvent(type="task_artifact", artifact={"articles": articles})
+        try:
+            if agent == "legal-research-agent":
+                query = payload["query"]
+                articles = await self._research_agent.run(query)
+                yield A2AEvent(type="task_status", status={"state": "completed"})
+                yield A2AEvent(type="task_artifact", artifact={"articles": articles})
 
-        elif agent == "citation-checker-agent":
-            articles = payload["articles"]
-            query = payload["query"]
-            citations = await self._citation_agent.run(articles, query)
-            yield A2AEvent(type="task_status", status={"state": "completed"})
-            yield A2AEvent(type="task_artifact", artifact={"citations": citations})
+            elif agent == "citation-checker-agent":
+                articles = payload["articles"]
+                query = payload["query"]
+                citations = await self._citation_agent.run(articles, query)
+                yield A2AEvent(type="task_status", status={"state": "completed"})
+                yield A2AEvent(type="task_artifact", artifact={"citations": citations})
 
-        elif agent == "response-synthesizer-agent":
-            query = payload["query"]
-            citations = payload["citations"]
-            result = await self._synthesis_agent.synthesize(query, citations)
-            yield A2AEvent(type="task_status", status={"state": "completed"})
-            yield A2AEvent(type="task_artifact", artifact=result)
+            elif agent == "response-synthesizer-agent":
+                query = payload["query"]
+                citations = payload["citations"]
+                result = await self._synthesis_agent.synthesize(query, citations)
+                yield A2AEvent(type="task_status", status={"state": "completed"})
+                yield A2AEvent(type="task_artifact", artifact=result)
 
-        else:
-            raise ValueError(f"Unknown A2A agent: {agent}")
+            else:
+                raise ValueError(f"Unknown A2A agent: {agent}")
+        except Exception as exc:
+            logger.exception("InProcessFallbackClient: agent '%s' failed", agent)
+            yield A2AEvent(type="task_status", status={"state": "failed", "error": str(exc)})

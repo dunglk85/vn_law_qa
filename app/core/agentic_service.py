@@ -171,7 +171,7 @@ class AgenticService:
             )
         except TimeoutError:
             logger.error("Supervisor timed out after %.0fs", config.agent_timeout)
-            return _NO_CONTEXT_ANSWER, [], [], []
+            raise
 
         answer = result.get("final_response") or _NO_CONTEXT_ANSWER
         citations = result.get("verified_citations") or []

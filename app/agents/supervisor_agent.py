@@ -331,7 +331,6 @@ class SupervisorAgent:
 
     async def execute_response_synthesis(self, state: SupervisorState) -> dict:
         node_start = time.time()
-        new_retry = state.get("retry_count", 0) + 1
         steps = list(state.get("reasoning_steps", []))
         try:
             result = await retry_with_backoff(
@@ -351,7 +350,7 @@ class SupervisorAgent:
             step["duration_ms"] = round((time.time() - node_start) * 1000)
             steps.append(step)
             return {"final_response": result["response"], "error": None,
-                    "retry_count": new_retry, "reasoning_steps": steps}
+                    "retry_count": state.get("retry_count", 0), "reasoning_steps": steps}
         except Exception as exc:
             logger.error("ResponseSynthesizerAgent failed: %s", exc)
             step = self._step("supervisor", "response_synthesis",
@@ -361,7 +360,7 @@ class SupervisorAgent:
             step["duration_ms"] = round((time.time() - node_start) * 1000)
             steps.append(step)
             return {"error": str(exc), "final_response": None,
-                    "retry_count": new_retry, "reasoning_steps": steps}
+                    "retry_count": state.get("retry_count", 0) + 1, "reasoning_steps": steps}
 
     def _heuristic_score(self, response: str, citations: list[Citation]) -> float:
         score = 0.0

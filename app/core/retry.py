@@ -6,6 +6,22 @@ import random
 
 logger = logging.getLogger(__name__)
 
+_NON_RETRYABLE = (
+    ValueError,
+    TypeError,
+    AttributeError,
+    KeyError,
+    NotImplementedError,
+)
+
+
+def _is_retryable(exc: Exception) -> bool:
+    if isinstance(exc, asyncio.CancelledError):
+        return False
+    if isinstance(exc, _NON_RETRYABLE):
+        return False
+    return True
+
 
 async def retry_with_backoff(
     coro_factory,
@@ -20,6 +36,9 @@ async def retry_with_backoff(
             return await coro_factory()
         except Exception as exc:
             last_exc = exc
+            if not _is_retryable(exc):
+                logger.error("%s failed with non-retryable error: %s", desc, exc)
+                raise
             if attempt < max_attempts - 1:
                 delay = min(base_delay * (2 ** attempt), max_delay)
                 jitter = random.uniform(0, delay * 0.1)
