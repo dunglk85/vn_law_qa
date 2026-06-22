@@ -49,8 +49,7 @@ def run_stage(name: str, module_path: str) -> None:
 def run_pipeline(from_stage: str | None = None, stage_only: str | None = None) -> None:
     if stage_only:
         if stage_only not in STAGES:
-            logger.error("Unknown stage: %s. Choose from: %s", stage_only, list(STAGES))
-            sys.exit(1)
+            raise ValueError(f"Unknown stage: {stage_only}. Choose from: {list(STAGES)}")
         for name, module_path in STAGES[stage_only]:
             run_stage(name, module_path)
         return

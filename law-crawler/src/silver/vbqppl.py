@@ -100,7 +100,11 @@ def main() -> None:
         out_path = SILVER_VBQPPL / "vb_chimuc.parquet"
         tmp_path = out_path.with_suffix(".tmp")
         df_out.to_parquet(tmp_path, index=False)
-        tmp_path.replace(out_path)
+        try:
+            tmp_path.replace(out_path)
+        except OSError:
+            import shutil
+            shutil.move(str(tmp_path), str(out_path))
         logger.info("Saved %d split records", len(df_out))
 
     logger.info("Silver VBQPPL done")

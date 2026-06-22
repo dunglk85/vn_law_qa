@@ -97,4 +97,4 @@ async def run_ingest(
     await vector_store.create_index()
     retriever.build_index(docs)
 
-    return {"documents": len(docs), "chunks": len(docs)}
+    return {"documents": len(docs), "chunks": len(docs), "pre_chunked": True}

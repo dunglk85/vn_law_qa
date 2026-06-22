@@ -4,12 +4,13 @@ import os
 from pathlib import Path
 
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+
+
 def setup_logging(name: str | None = None) -> logging.Logger:
-    """Configure and return a logger with consistent formatting."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
     return logging.getLogger(name or __name__)
 
 ROOT = Path(__file__).parent.parent
