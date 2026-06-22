@@ -58,20 +58,20 @@
     const sourcesList = document.getElementById('sources');
     const sourcesBlock = document.getElementById('sourcesBlock');
 
-function renderSources(sources) {
-  if (!sources || !sources.length) {
-    sourcesBlock.style.display = 'none';
-    sourcesList.innerHTML = '';
-    return;
-  }
-  sourcesBlock.style.display = '';
-  sourcesList.innerHTML = sources.map(text => `
-    <div class="source-item">
-      <div class="source-content">${(text ?? '')
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
-    </div>
-  `).join('');
-}
+    function renderSources(sources) {
+      if (!sources || !sources.length) {
+        sourcesBlock.style.display = 'none';
+        sourcesList.innerHTML = '';
+        return;
+      }
+      sourcesBlock.style.display = '';
+      sourcesList.innerHTML = sources.map(text => `
+        <div class="source-item">
+          <div class="source-content">${(text ?? '')
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+        </div>
+      `).join('');
+    }
 
     async function submitQuestion() {
       const q = textarea.value.trim();

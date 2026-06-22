@@ -52,8 +52,8 @@ class ParquetLoaderAdapter(DocumentLoaderPort):
             List of LangChain Document objects with metadata.
         """
         data_path = Path(data_dir)
-        if not data_path.exists():
-            logger.warning("Data directory does not exist: %s", data_dir)
+        if not data_path.exists() or not data_path.is_dir():
+            logger.warning("Data directory does not exist or is not a directory: %s", data_dir)
             return []
 
         docs: list[Document] = []
@@ -87,18 +87,20 @@ class ParquetLoaderAdapter(DocumentLoaderPort):
 
         docs: list[Document] = []
         for _, row in df.iterrows():
+            text_val = row.get("text")
+            text_str = str(text_val) if pd.notna(text_val) and text_val is not None else ""
             doc = Document(
-                page_content=str(row.get("text", "") or ""),
+                page_content=text_str,
                 metadata={
                     "source": "law-crawler",
-                    "chunk_id": str(row.get("chunk_id", "") or ""),
-                    "article_id": str(row.get("article_id", "") or ""),
-                    "title": str(row.get("title", "") or ""),
-                    "chude": str(row.get("chude", "") or ""),
-                    "demuc": str(row.get("demuc", "") or ""),
-                    "chuong": str(row.get("chuong", "") or ""),
-                    "chunk_index": int(row.get("chunk_index", 0) or 0),
-                    "total_chunks": int(row.get("total_chunks", 1) or 1),
+                    "chunk_id": str(row.get("chunk_id")) if pd.notna(row.get("chunk_id")) else "",
+                    "article_id": str(row.get("article_id")) if pd.notna(row.get("article_id")) else "",
+                    "title": str(row.get("title")) if pd.notna(row.get("title")) else "",
+                    "chude": str(row.get("chude")) if pd.notna(row.get("chude")) else "",
+                    "demuc": str(row.get("demuc")) if pd.notna(row.get("demuc")) else "",
+                    "chuong": str(row.get("chuong")) if pd.notna(row.get("chuong")) else "",
+                    "chunk_index": int(row.get("chunk_index")) if pd.notna(row.get("chunk_index")) else 0,
+                    "total_chunks": int(row.get("total_chunks")) if pd.notna(row.get("total_chunks")) else 1,
                     "category": "law",
                 },
             )
@@ -118,18 +120,20 @@ class ParquetLoaderAdapter(DocumentLoaderPort):
 
         docs: list[Document] = []
         for _, row in df.iterrows():
+            text_val = row.get("text")
+            text_str = str(text_val) if pd.notna(text_val) and text_val is not None else ""
             parent_val = row.get("parent_id")
             parent_str = str(parent_val) if pd.notna(parent_val) and parent_val is not None else ""
             doc = Document(
-                page_content=str(row.get("text", "") or ""),
+                page_content=text_str,
                 metadata={
                     "source": "law-crawler",
-                    "chunk_id": str(row.get("chunk_id", "") or ""),
-                    "source_id": str(row.get("source_id", "") or ""),
-                    "source_type": str(row.get("source_type", "vbqppl") or "vbqppl"),
+                    "chunk_id": str(row.get("chunk_id")) if pd.notna(row.get("chunk_id")) else "",
+                    "source_id": str(row.get("source_id")) if pd.notna(row.get("source_id")) else "",
+                    "source_type": str(row.get("source_type")) if pd.notna(row.get("source_type")) else "vbqppl",
                     "parent_id": parent_str,
-                    "chunk_index": int(row.get("chunk_index", 0) or 0),
-                    "total_chunks": int(row.get("total_chunks", 1) or 1),
+                    "chunk_index": int(row.get("chunk_index")) if pd.notna(row.get("chunk_index")) else 0,
+                    "total_chunks": int(row.get("total_chunks")) if pd.notna(row.get("total_chunks")) else 1,
                     "category": "vbqppl",
                 },
             )
