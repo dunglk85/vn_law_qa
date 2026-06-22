@@ -16,10 +16,9 @@ from collections.abc import Callable
 
 from app.config import config
 from app.ports.cache import CachePort
-from app.ports.chunking import ChunkingPort
+from app.ports.document_loader import DocumentLoaderPort
 from app.ports.embeddings import EmbeddingsPort
 from app.ports.llm import LLMPort
-from app.ports.metadata_enrichment import MetadataEnrichmentPort
 from app.ports.query_transformer import QueryTransformerPort
 from app.ports.rate_limiter import RateLimiterPort
 from app.ports.reranker import RerankerPort
@@ -151,28 +150,6 @@ def _create_none_cache() -> CachePort:
     return NoneCacheAdapter()
 
 
-@_register("chunker", "recursive")
-def _create_recursive_chunker(chunk_size: int, chunk_overlap: int) -> ChunkingPort:
-    from app.adapters.chunkers.recursive_chunker import RecursiveChunkerAdapter
-
-    return RecursiveChunkerAdapter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-
-
-@_register("chunker", "semantic")
-def _create_semantic_chunker(
-    embeddings,
-    breakpoint_threshold_type: str,
-    breakpoint_threshold_amount: float,
-) -> ChunkingPort:
-    from app.adapters.chunkers.semantic_chunker import SemanticChunkerAdapter
-
-    return SemanticChunkerAdapter(
-        embeddings=embeddings,
-        breakpoint_threshold_type=breakpoint_threshold_type,
-        breakpoint_threshold_amount=breakpoint_threshold_amount,
-    )
-
-
 @_register("retriever", "dense")
 def _create_dense_retriever(vector_store: VectorStorePort, k: int) -> RetrieverPort:
     from app.adapters.retrievers.dense_retriever import DenseRetrieverAdapter
@@ -229,27 +206,6 @@ def _create_hyde_decomposition_query_transformer(chat_model) -> QueryTransformer
     return HyDEDecompositionQueryTransformerAdapter(chat_model)
 
 
-@_register("metadata_enricher", "none")
-def _create_none_metadata_enricher() -> MetadataEnrichmentPort:
-    from app.adapters.metadata_enrichers.none_enricher import NoneEnricherAdapter
-
-    return NoneEnricherAdapter()
-
-
-@_register("metadata_enricher", "basic")
-def _create_basic_metadata_enricher() -> MetadataEnrichmentPort:
-    from app.adapters.metadata_enrichers.basic_enricher import BasicEnricherAdapter
-
-    return BasicEnricherAdapter()
-
-
-@_register("metadata_enricher", "llm")
-def _create_llm_metadata_enricher(chat_model) -> MetadataEnrichmentPort:
-    from app.adapters.metadata_enrichers.llm_enricher import LLMEnricherAdapter
-
-    return LLMEnricherAdapter(chat_model)
-
-
 # ── public factory functions ────────────────────────────────────────────────
 
 
@@ -301,18 +257,6 @@ def create_cache(embeddings: EmbeddingsPort | None = None) -> CachePort:
     return _resolve("cache", config.cache_type, **kw)
 
 
-def create_chunker(embeddings: EmbeddingsPort | None = None) -> ChunkingPort:
-    kw: dict = dict(chunk_size=config.chunk_size, chunk_overlap=config.chunk_overlap)
-
-    if config.chunker_type == "semantic":
-        embeddings_port = embeddings or create_embeddings()
-        kw["embeddings"] = embeddings_port.get_embeddings()
-        kw["breakpoint_threshold_type"] = config.semantic_breakpoint_threshold_type
-        kw["breakpoint_threshold_amount"] = config.semantic_breakpoint_threshold_amount
-
-    return _resolve("chunker", config.chunker_type, **kw)
-
-
 def create_retriever(vector_store: VectorStorePort) -> RetrieverPort:
     kw: dict = dict(k=config.retrieval_k)
 
@@ -332,12 +276,10 @@ def create_query_transformer(llm: LLMPort) -> QueryTransformerPort:
     return _resolve("query_transformer", config.query_transformer_type, **kw)
 
 
-def create_metadata_enricher(llm: LLMPort) -> MetadataEnrichmentPort:
-    kw: dict = {}
-    if config.metadata_enricher_type == "llm":
-        kw["chat_model"] = llm.get_chat_model()
+def create_document_loader() -> DocumentLoaderPort:
+    from app.adapters.document_loaders.parquet_loader import ParquetLoaderAdapter
 
-    return _resolve("metadata_enricher", config.metadata_enricher_type, **kw)
+    return ParquetLoaderAdapter()
 
 
 # --------------------------------------------------------------------------- #

@@ -19,19 +19,16 @@ from app.auth.dependencies import require_role
 from app.auth.router import router as auth_router
 from app.config import config
 from app.core.agentic_service import create_agentic_service
-from app.core.ingest_service import run_ingest
 from app.core.rag_service import RAGService
 from app.exceptions import AppError
 from app.factory import (
     create_a2a_client,
     create_cache,
-    create_chunker,
     create_citation_checker_agent,
     create_embeddings,
     create_knowledge_search_tool,
     create_legal_research_agent,
     create_llm,
-    create_metadata_enricher,
     create_query_transformer,
     create_rate_limiter,
     create_reranker,
@@ -44,7 +41,6 @@ from app.factory import (
 
 logger = logging.getLogger(__name__)
 
-_INGEST_API_KEY = os.getenv("INGEST_API_KEY", "")
 _VALID_RAG_MODES = {"legacy", "agentic"}
 
 # --------------------------------------------------------------------------- #
@@ -69,10 +65,8 @@ async def lifespan(app: FastAPI):
         app.state.llm = create_llm()
         app.state.reranker = create_reranker(embeddings=embeddings)
         app.state.cache = create_cache(embeddings=embeddings)
-        app.state.chunker = create_chunker(embeddings=embeddings)
         app.state.retriever = create_retriever(vector_store=app.state.vector_store)
         app.state.query_transformer = create_query_transformer(llm=app.state.llm)
-        app.state.enricher = create_metadata_enricher(llm=app.state.llm)
 
         try:
             app.state.cache.apply()
@@ -186,36 +180,6 @@ static_dir = Path(__file__).with_name("static")
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 # --------------------------------------------------------------------------- #
-# Ingestion state                                                              #
-# --------------------------------------------------------------------------- #
-
-_ingest_lock = asyncio.Lock()
-_ingest_task: asyncio.Task | None = None
-_ingest_last: dict = {
-    "status": "idle",
-    "started_at": None,
-    "finished_at": None,
-    "stats": None,
-    "error": None,
-}
-
-
-async def _ingest_job(vector_store, chunker, retriever, enricher, tenant_id=None) -> None:
-    _ingest_last.update({
-        "status": "running",
-        "started_at": time.time(),
-        "finished_at": None,
-        "stats": None,
-        "error": None,
-    })
-    try:
-        stats = await run_ingest(vector_store, chunker, retriever, enricher, tenant_id=tenant_id)
-        _ingest_last.update({"status": "succeeded", "finished_at": time.time(), "stats": stats})
-    except Exception as e:
-        _ingest_last.update({"status": "failed", "finished_at": time.time(), "error": str(e)})
-
-
-# --------------------------------------------------------------------------- #
 # Request models                                                               #
 # --------------------------------------------------------------------------- #
 
@@ -253,47 +217,9 @@ async def metrics() -> dict:
         "prompt_tokens": tracker.prompt_tokens if tracker else 0,
         "completion_tokens": tracker.completion_tokens if tracker else 0,
         "total_tokens": tracker.total_tokens if tracker else 0,
-        "ingest_status": _ingest_last["status"],
-        "ingest_last_success": _ingest_last.get("finished_at") is not None and _ingest_last["status"] == "succeeded",
         "http_errors": error_count,
     }
     return metrics_data
-
-
-@app.post("/ingest", response_model=None)
-async def kick_off_ingest(
-    request: Request,
-    _user: dict = Depends(require_role("admin")),
-    x_api_key: str | None = Header(None),
-):
-    if _INGEST_API_KEY and x_api_key != _INGEST_API_KEY:
-        return JSONResponse(
-            {"ok": False, "message": "Invalid or missing API key"},
-            status_code=401,
-        )
-    global _ingest_task
-    tenant_id = _user.get("tenant_id") if isinstance(_user, dict) else None
-    async with _ingest_lock:
-        if _ingest_task and not _ingest_task.done():
-            return JSONResponse(
-                {"ok": False, "message": "Ingestion already running"},
-                status_code=409,
-            )
-        _ingest_task = asyncio.create_task(
-            _ingest_job(
-                request.app.state.vector_store,
-                request.app.state.chunker,
-                request.app.state.retriever,
-                request.app.state.enricher,
-                tenant_id=tenant_id,
-            )
-        )
-    return {"ok": True, "message": "Ingestion started"}
-
-
-@app.get("/ingest/status")
-async def ingest_status() -> dict:
-    return {"ok": True, **_ingest_last}
 
 
 def _get_client_ip(request: Request) -> str:

@@ -1,9 +1,8 @@
 # app/ports/__init__.py
 from .cache import CachePort
-from .chunking import ChunkingPort
+from .document_loader import DocumentLoaderPort
 from .embeddings import EmbeddingsPort
 from .llm import LLMPort
-from .metadata_enrichment import MetadataEnrichmentPort
 from .query_transformer import QueryTransformerPort
 from .rate_limiter import RateLimiterPort
 from .reranker import RerankerPort
@@ -13,10 +12,9 @@ from .vector_store import VectorStorePort
 
 __all__ = [
     "CachePort",
-    "ChunkingPort",
+    "DocumentLoaderPort",
     "EmbeddingsPort",
     "LLMPort",
-    "MetadataEnrichmentPort",
     "QueryTransformerPort",
     "RateLimiterPort",
     "RerankerPort",

@@ -82,7 +82,6 @@ class TestAppConfigDefaults:
         assert hasattr(config, "embeddings_type")
         assert hasattr(config, "reranker_type")
         assert hasattr(config, "cache_type")
-        assert hasattr(config, "chunker_type")
         assert hasattr(config, "retriever_type")
         assert hasattr(config, "rag_mode")
 

@@ -44,16 +44,15 @@ graph TB
         SA["Supervisor Agent<br/>app/agents/supervisor_agent.py"]
     end
 
-    subgraph PortLayer["Port Layer (11 interfaces)"]
+    subgraph PortLayer["Port Layer (10 interfaces)"]
         VP["VectorStorePort"]
         LP["LLMPort"]
         EP["EmbeddingsPort"]
         RP["RetrieverPort"]
         RER["RerankerPort"]
         CP["CachePort"]
-        CHP["ChunkingPort"]
+        DLP["DocumentLoaderPort"]
         QTP["QueryTransformerPort"]
-        MEP["MetadataEnrichmentPort"]
         SSP["SessionStorePort"]
         RLP["RateLimiterPort"]
     end
@@ -65,6 +64,7 @@ graph TB
         DR["DenseRetrieverAdapter"]
         CO["CohereRerankerAdapter"]
         RC["RedisCacheAdapter"]
+        PL["ParquetLoaderAdapter"]
     end
 
     subgraph StorageLayer["Storage"]
@@ -77,15 +77,13 @@ graph TB
     API --> AUTH --> RL
     RL --> RAG
     RL --> AS
-    RL --> IS
     RAG --> RP
     RAG --> RER
     RAG --> LP
     AS --> SA
     SA --> RP
-    IS --> CHP
-    IS --> MEP
-    IS --> EP
+    IS --> DLP
+    IS --> VP
 
     RP -.->|implements| DR
     LP -.->|implements| OA
@@ -93,6 +91,7 @@ graph TB
     RER -.->|implements| CO
     CP -.->|implements| RC
     VP -.->|implements| PG
+    DLP -.->|implements| PL
     SSP -.->|implements| RC
     RLP -.->|implements| RL
 
@@ -143,7 +142,7 @@ company-knowledge-assistant/
 │   ├── core/
 │   │   ├── agentic_service.py # LangGraph multi-agent RAG service
 │   │   ├── rag_service.py     # Traditional single-pass RAG service
-│   │   ├── ingest_service.py  # Document loading + chunking pipeline
+│   │   ├── ingest_service.py  # Parquet loading + embedding pipeline
 │   │   ├── models.py          # Article, Citation, Task dataclasses + utilities
 │   │   ├── retry.py           # Exponential backoff retry wrapper
 │   │   └── reasoning_step.py  # Agent trace data shape
@@ -154,17 +153,15 @@ company-knowledge-assistant/
 │   │   ├── response_synthesizer_agent.py # Vietnamese legal response gen
 │   │   └── tools/
 │   │       └── knowledge_search.py       # LangChain @tool wrapper
-│   ├── ports/                 # 11 abstract interfaces
-│   │   ├── cache.py, chunking.py, embeddings.py, llm.py
-│   │   ├── metadata_enrichment.py, query_transformer.py
-│   │   ├── rate_limiter.py, reranker.py, retriever.py
-│   │   ├── session_store.py, vector_store.py
+│   ├── ports/                 # 10 abstract interfaces
+│   │   ├── cache.py, document_loader.py, embeddings.py, llm.py
+│   │   ├── query_transformer.py, rate_limiter.py, reranker.py
+│   │   ├── retriever.py, session_store.py, vector_store.py
 │   └── adapters/              # 20+ concrete implementations
 │       ├── caches/            # RedisCacheAdapter, NoneCacheAdapter
-│       ├── chunkers/          # RecursiveChunkerAdapter, SemanticChunkerAdapter
+│       ├── document_loaders/  # ParquetLoaderAdapter
 │       ├── embeddings/        # OpenAIEmbeddingsAdapter
 │       ├── llms/              # OpenAILLMAdapter
-│       ├── metadata_enrichers/ # BasicEnricherAdapter, LLMEnricherAdapter, NoneEnricherAdapter
 │       ├── rate_limiters/     # RedisRateLimiterAdapter, MemoryRateLimiterAdapter
 │       ├── rerankers/         # CohereRerankerAdapter, CrossEncoder*, MMR*, None*
 │       ├── retrievers/        # Dense*, BM25*, HybridInterleaving*, HybridRRF*
@@ -249,28 +246,22 @@ sequenceDiagram
 
 ### 3c. Ingestion
 
+Ingestion is handled by the `law-crawler/` pipeline (see [ADR-0001](adr/0001-law-crawler-integration.md)).
+The crawler produces pre-chunked Parquet files in `law-crawler/data/gold/`.
+The main app loads these via `ParquetLoaderAdapter` and embeds them into pgvector.
+
 ```mermaid
 flowchart TD
-    A["POST /ingest"] --> B{"Auth check"}
-    B -->|"role=admin or X-Api-Key"| C["_load_docs()"]
-    B -->|"fail"| X["401 Unauthorized"]
-    C --> D{"Document type?"}
-    D -->|pdf| E["PyMuPDFLoader"]
-    D -->|docx| F["Docx2txtLoader"]
-    D -->|txt| G["TextLoader"]
-    E --> H["Metadata enricher"]
-    F --> H
-    G --> H
-    H --> I["ChunkerPort.chunk()"]
-    I --> J{"Chunker type"}
-    J -->|recursive| K["RecursiveCharacterTextSplitter"]
-    J -->|semantic| L["Embedding-based splitter"]
-    K --> M["VectorStorePort.add_documents()"]
-    L --> M
-    M --> N["VectorStorePort.create_index()"]
-    N --> O["RetrieverPort.build_index()"]
-    O --> P["JSON {documents, chunks}"]
+    A["law-crawler/"] -->|"dvc repro"| B["Bronze → Silver → Gold"]
+    B --> C["data/gold/*.parquet"]
+    C -->|"ParquetLoaderAdapter.load()"| D["_load_docs()"]
+    D --> E["VectorStorePort.add_documents()"]
+    E --> F["VectorStorePort.create_index()"]
+    F --> G["RetrieverPort.build_index()"]
 ```
+
+The `/ingest` API endpoint has been removed. Ingestion is triggered by running
+the law-crawler pipeline or by calling `run_ingest()` directly from a script.
 
 ---
 
@@ -281,11 +272,11 @@ Every field is backed by an environment variable with a sensible default.
 
 | Category | Env Vars | Purpose / Default |
 |----------|----------|-------------------|
-| **Provider selection** | `VECTOR_STORE_TYPE`, `LLM_TYPE`, `EMBEDDINGS_TYPE`, `RERANKER_TYPE`, `CACHE_TYPE`, `CHUNKER_TYPE`, `RETRIEVER_TYPE`, `QUERY_TRANSFORMER_TYPE`, `METADATA_ENRICHER_TYPE`, `RAG_MODE` | Select which adapter each port binds to. Default: `VECTOR_STORE_TYPE=pgvector`, `RAG_MODE=traditional` |
+| **Provider selection** | `VECTOR_STORE_TYPE`, `LLM_TYPE`, `EMBEDDINGS_TYPE`, `RERANKER_TYPE`, `CACHE_TYPE`, `RETRIEVER_TYPE`, `QUERY_TRANSFORMER_TYPE`, `RAG_MODE` | Select which adapter each port binds to. Default: `VECTOR_STORE_TYPE=pgvector`, `RAG_MODE=traditional` |
 | **Connection strings** | `DATABASE_URL`, `REDIS_URL` | Infrastructure endpoints. Default: `DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db` |
 | **API keys** | `OPENAI_API_KEY`, `CO_API_KEY`, `LANGSMITH_API_KEY` | Provider credentials. Startup warning issued if unset. |
 | **Model names** | `LLM_MODEL`, `EMBEDDINGS_MODEL`, `RERANKER_MODEL` | Model identifiers. Default: `LLM_MODEL=gpt-4o-mini` |
-| **RAG tuning** | `RETRIEVAL_K`, `RRF_K`, `RERANKER_TOP_N`, `CHUNK_SIZE`, `CHUNK_OVERLAP`, etc. | Retrieval and chunking parameters. Default: `CHUNK_SIZE=900` |
+| **RAG tuning** | `RETRIEVAL_K`, `RRF_K`, `RERANKER_TOP_N`, etc. | Retrieval parameters. Chunking is handled by the law-crawler pipeline. |
 | **Index params** | `INDEX_TYPE`, `HNSW_M`, `HNSW_EF_CONSTRUCTION`, `IVFFLAT_LISTS`, `IVFFLAT_PROBES` | Vector index configuration. Default: `INDEX_TYPE=hnsw` |
 | **Agent timeouts** | `LLM_TIMEOUT`, `AGENT_TIMEOUT`, `ASK_TIMEOUT`, `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW` | Timeouts and rate limit thresholds. Default: `ASK_TIMEOUT=120` |
 | **Agent tuning** | `MAX_RETRIES`, `QUALITY_THRESHOLD`, `N_RESULTS_PER_VECTOR`, `TOP_K_RESEARCH`, `TOP_K_LLM_SCORE`, `HYDE_ENABLED`, `SUBQUERY_COUNT`, `RELEVANCE_THRESHOLD` | Agent behavior knobs. Default: `HYDE_ENABLED=true` |

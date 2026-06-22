@@ -19,10 +19,8 @@ def mock_deps():
          patch("app.api.create_llm") as mock_llm, \
          patch("app.api.create_reranker") as mock_rerank, \
          patch("app.api.create_cache") as mock_cache, \
-         patch("app.api.create_chunker") as mock_chunk, \
          patch("app.api.create_retriever") as mock_ret, \
          patch("app.api.create_query_transformer") as mock_qt, \
-         patch("app.api.create_metadata_enricher") as mock_enrich, \
          patch("app.api.create_rate_limiter") as mock_rl, \
          patch("app.api.create_session_store") as mock_ss, \
          patch("app.api.create_knowledge_search_tool") as mock_kst, \
@@ -34,10 +32,8 @@ def mock_deps():
         mock_llm.return_value = MagicMock()
         mock_rerank.return_value = MagicMock()
         mock_cache.return_value = MagicMock()
-        mock_chunk.return_value = MagicMock()
         mock_ret.return_value = MagicMock()
         mock_qt.return_value = MagicMock()
-        mock_enrich.return_value = MagicMock()
         mock_rl.return_value = AsyncMock()
         mock_ss.return_value = MagicMock()
         mock_kst.return_value = MagicMock()
@@ -50,10 +46,8 @@ def mock_deps():
             "llm": mock_llm,
             "reranker": mock_rerank,
             "cache": mock_cache,
-            "chunker": mock_chunk,
             "retriever": mock_ret,
             "query_transformer": mock_qt,
-            "enricher": mock_enrich,
             "rate_limiter": mock_rl,
             "session_store": mock_ss,
             "knowledge_search_tool": mock_kst,
@@ -136,21 +130,3 @@ class TestAskEndpoint:
             headers = {"Authorization": f"Bearer {token}"}
             response = client.post("/ask", json={"question": "test"}, headers=headers)
             assert response.status_code in [200, 504]
-
-
-class TestIngestEndpoint:
-    def test_ingest_requires_admin(self, client, mock_deps):
-        with patch("app.auth.router.config") as mock_config:
-            mock_config.admin_username = "admin"
-            mock_config.admin_password = "admin"
-            mock_config.jwt_secret = "test-secret"
-            mock_config.jwt_algorithm = "HS256"
-            mock_config.access_token_expire_minutes = 30
-            mock_config.refresh_token_expire_days = 7
-
-            login_response = client.post("/auth/token", json={"username": "admin", "password": "admin"})
-            token = login_response.json()["access_token"]
-
-            headers = {"Authorization": f"Bearer {token}"}
-            response = client.post("/ingest", headers=headers)
-            assert response.status_code in [200, 409]

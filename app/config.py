@@ -57,17 +57,11 @@ class AppConfig:
     cache_type: str = _str_env("CACHE_TYPE", "redis")
     # redis | none
 
-    chunker_type: str = _str_env("CHUNKER_TYPE", "recursive")
-    # recursive | semantic
-
     retriever_type: str = _str_env("RETRIEVER_TYPE", "dense")
     # dense | bm25 | hybrid_interleaving | hybrid_rrf
 
     query_transformer_type: str = _str_env("QUERY_TRANSFORMER_TYPE", "none")
     # none | hyde | decomposition | hyde_decomposition
-
-    metadata_enricher_type: str = _str_env("METADATA_ENRICHER_TYPE", "basic")
-    # basic | llm | none
 
     rag_mode: str = _str_env("RAG_MODE", "legacy")
     # legacy (RAGService) | agentic (AgenticService)
@@ -99,10 +93,6 @@ class AppConfig:
     rrf_k: int = _int_env("RRF_K", 60)
     reranker_top_n: int = _int_env("RERANKER_TOP_N", 3)
     mmr_lambda_mult: float = _float_env("MMR_LAMBDA_MULT", 0.5)
-    chunk_size: int = _int_env("CHUNK_SIZE", 900)
-    chunk_overlap: int = _int_env("CHUNK_OVERLAP", 120)
-    semantic_breakpoint_threshold_type: str = _str_env("SEMANTIC_BREAKPOINT_THRESHOLD_TYPE", "percentile")
-    semantic_breakpoint_threshold_amount: float = _float_env("SEMANTIC_BREAKPOINT_THRESHOLD_AMOUNT", 95.0)
     cache_distance_threshold: float = _float_env("CACHE_DISTANCE_THRESHOLD", 0.98)
 
     data_dir: str = _str_env("DATA_DIR", "data")
