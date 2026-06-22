@@ -1,38 +1,37 @@
 # ---- Builder ----
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    NLTK_DATA=/app/nltk_data
+    PYTHONUNBUFFERED=1
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install --user --timeout 600 --retries 20 -r requirements.txt
-
-RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('averaged_perceptron_tagger'); nltk.download('averaged_perceptron_tagger_eng')"
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip && pip install --user --timeout 600 --retries 20 -r requirements.txt
 
 # ---- Runtime ----
-FROM python:3.11-slim AS runtime
+FROM python:3.12-slim AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY --from=builder /root/.local /root/.local
-COPY --from=builder /app/nltk_data /app/nltk_data
 
 ENV PATH=/root/.local/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    NLTK_DATA=/app/nltk_data
+    PYTHONUNBUFFERED=1
 
 COPY app/ /app/app/
 COPY data/ /app/data/
