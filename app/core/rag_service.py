@@ -6,6 +6,8 @@ It depends only on Port interfaces injected at construction time.
 """
 from __future__ import annotations
 
+import hashlib
+
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.retrievers import ContextualCompressionRetriever
@@ -96,12 +98,12 @@ class RAGService:
     ) -> list[Document]:
         """Retrieve documents for multiple queries and deduplicate."""
         all_docs: list[Document] = []
-        seen_content: set[int] = set()
+        seen_content: set[str] = set()
 
         for query in queries:
             docs = await retriever.ainvoke(query)
             for doc in docs:
-                content_hash = hash(doc.page_content)
+                content_hash = hashlib.md5(doc.page_content.encode()).hexdigest()
                 if content_hash not in seen_content:
                     all_docs.append(doc)
                     seen_content.add(content_hash)

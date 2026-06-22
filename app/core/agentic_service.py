@@ -30,37 +30,15 @@ class AgenticService:
         llm: LLMPort,
         retriever: RetrieverPort,
         query_transformer: QueryTransformerPort,
-        knowledge_search_tool=None,
-        supervisor=None,
+        supervisor,
         session_store: SessionStorePort | None = None,
-        a2a_client=None,
     ) -> None:
         self._vector_store = vector_store
         self._llm = llm
         self._retriever = retriever
         self._query_transformer = query_transformer
         self._session_store = session_store
-
-        if supervisor is not None:
-            self._supervisor = supervisor
-        else:
-            from app.agents.citation_checker_agent import CitationCheckerAgent
-            from app.agents.legal_research_agent import LegalResearchAgent
-            from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
-            from app.agents.supervisor_agent import SupervisorAgent
-            from app.agents.tools.knowledge_search import create_knowledge_search_tool as _direct_tool
-
-            chat_model = llm.get_chat_model()
-            if knowledge_search_tool is None:
-                knowledge_search_tool = _direct_tool(retriever, k=config.retrieval_k)
-            self._supervisor = SupervisorAgent(
-                research_agent=LegalResearchAgent(self._retriever, chat_model),
-                citation_agent=CitationCheckerAgent(self._vector_store, chat_model),
-                synthesis_agent=ResponseSynthesizerAgent(chat_model),
-                llm=chat_model,
-                knowledge_search_tool=knowledge_search_tool,
-                a2a_client=a2a_client,
-            )
+        self._supervisor = supervisor
         self._warmed_up = False
         self._warmup_lock = asyncio.Lock()
 
@@ -213,13 +191,11 @@ def create_agentic_service(
     llm: LLMPort,
     retriever: RetrieverPort,
     query_transformer: QueryTransformerPort,
-    knowledge_search_tool=None,
+    supervisor,
     session_store: SessionStorePort | None = None,
-    a2a_client=None,
 ) -> AgenticService:
     return AgenticService(
         vector_store, llm, retriever, query_transformer,
-        knowledge_search_tool=knowledge_search_tool,
+        supervisor=supervisor,
         session_store=session_store,
-        a2a_client=a2a_client,
     )

@@ -368,6 +368,8 @@ def create_supervisor_agent(
     citation_agent,
     synthesis_agent,
     llm: LLMPort,
+    knowledge_search_tool=None,
+    a2a_client=None,
 ):
     from app.agents.supervisor_agent import SupervisorAgent
 
@@ -376,6 +378,8 @@ def create_supervisor_agent(
         citation_agent=citation_agent,
         synthesis_agent=synthesis_agent,
         llm=llm.get_chat_model(),
+        knowledge_search_tool=knowledge_search_tool,
+        a2a_client=a2a_client,
     )
 
 

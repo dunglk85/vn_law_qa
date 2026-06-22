@@ -38,6 +38,7 @@ from app.factory import (
     create_response_synthesizer_agent,
     create_retriever,
     create_session_store,
+    create_supervisor_agent,
     create_vector_store,
 )
 
@@ -100,14 +101,21 @@ async def lifespan(app: FastAPI):
                 citation_agent=citation_agent,
                 synthesis_agent=synthesis_agent,
             )
+            supervisor = create_supervisor_agent(
+                research_agent=research_agent,
+                citation_agent=citation_agent,
+                synthesis_agent=synthesis_agent,
+                llm=app.state.llm,
+                knowledge_search_tool=app.state.knowledge_search_tool,
+                a2a_client=a2a_client,
+            )
             app.state.agentic_service = create_agentic_service(
                 vector_store=app.state.vector_store,
                 llm=app.state.llm,
                 retriever=app.state.retriever,
                 query_transformer=app.state.query_transformer,
-                knowledge_search_tool=app.state.knowledge_search_tool,
+                supervisor=supervisor,
                 session_store=app.state.session_store,
-                a2a_client=a2a_client,
             )
             logger.info("RAG_MODE=agentic: AgenticService initialized with A2A client")
         else:
