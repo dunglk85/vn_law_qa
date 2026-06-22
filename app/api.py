@@ -146,6 +146,17 @@ app = FastAPI(title="Company Knowledge Assistant", lifespan=lifespan)
 app.include_router(auth_router)
 
 
+@app.middleware("http")
+async def track_errors(request: Request, call_next):
+    """Track HTTP errors for monitoring."""
+    response = await call_next(request)
+    if response.status_code >= 400:
+        error_count = getattr(app.state, "error_count", 0)
+        app.state.error_count = error_count + 1
+        logger.warning("HTTP %d on %s %s", response.status_code, request.method, request.url.path)
+    return response
+
+
 @app.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError):
     """Handle AppError exceptions with structured JSON responses."""
@@ -222,6 +233,25 @@ async def root_page() -> FileResponse:
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/metrics")
+async def metrics() -> dict:
+    """Expose application metrics for monitoring and alerting."""
+    from app.core.token_tracker import get_tracker
+
+    tracker = get_tracker()
+    error_count = getattr(app.state, "error_count", 0)
+    metrics_data = {
+        "llm_calls": tracker.llm_call_count if tracker else 0,
+        "prompt_tokens": tracker.prompt_tokens if tracker else 0,
+        "completion_tokens": tracker.completion_tokens if tracker else 0,
+        "total_tokens": tracker.total_tokens if tracker else 0,
+        "ingest_status": _ingest_last["status"],
+        "ingest_last_success": _ingest_last.get("finished_at") is not None and _ingest_last["status"] == "succeeded",
+        "http_errors": error_count,
+    }
+    return metrics_data
 
 
 @app.post("/ingest", response_model=None)

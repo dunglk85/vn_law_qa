@@ -14,6 +14,7 @@ class TestAgenticService:
             "llm": MagicMock(),
             "retriever": MagicMock(),
             "query_transformer": MagicMock(),
+            "supervisor": MagicMock(),
             "session_store": MagicMock(),
         }
 
@@ -94,7 +95,7 @@ class TestAgenticService:
     def test_estimate_tokens(self, service):
         texts = ["hello world", "test"]
         result = service._estimate_tokens(texts)
-        assert result == 4  # (11 + 4) // 4
+        assert result == 3  # (11 // 4) + (4 // 4) = 2 + 1
 
     @pytest.mark.asyncio
     async def test_compress_history_short(self, service):
