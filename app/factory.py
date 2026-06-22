@@ -122,7 +122,7 @@ def _create_mmr_reranker(embeddings, top_n: int, lambda_mult: float) -> Reranker
 
 
 @_register("reranker", "none")
-def _create_none_reranker() -> RerankerPort:
+def _create_none_reranker(**kwargs) -> RerankerPort:
     from app.adapters.rerankers.none_reranker import NoneRerankerAdapter
 
     return NoneRerankerAdapter()

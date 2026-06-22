@@ -13,4 +13,5 @@ case "$agent" in
         ;;
 esac
 
-exec uvicorn "app.agents.a2a_servers.${agent}_server:app" --host 0.0.0.0 --port "$port"
+module="app.agents.a2a_servers.$(echo "$agent" | tr '-' '_')_server"
+exec uvicorn "${module}:app" --host 0.0.0.0 --port "$port"
