@@ -1,8 +1,12 @@
 services:
     law-mysql:
-        image: mysql:latest
+        image: mysql:8.4
+        container_name: law-mysql
+        restart: unless-stopped
         ports:
             - "${LAW_DB_PORT:-3306}:3306"
+        env_file:
+            - .env
         environment:
             MYSQL_ROOT_PASSWORD: "${LAW_DB_PASSWORD}"
             MYSQL_DATABASE: "${LAW_DB_NAME:-law}"
@@ -15,12 +19,14 @@ services:
             interval: 10s
             timeout: 5s
             retries: 5
+            start_period: 30s
 
     phpmyadmin:
-        image: phpmyadmin
+        image: phpmyadmin:5.2
+        container_name: law-phpmyadmin
         restart: always
         ports:
-            - "8081:80"
+            - "8082:80"
         depends_on:
             law-mysql:
                 condition: service_healthy
@@ -28,11 +34,10 @@ services:
             - law-network
         environment:
             PMA_HOST: law-mysql
-            UPLOAD_LIMIT: 300M
+            UPLOAD_LIMIT: 100M
 
 volumes:
     law_mysql_data:
 
 networks:
     law-network:
-        driver: bridge
