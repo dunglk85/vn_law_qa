@@ -4,8 +4,9 @@ Parses HTML law documents from the phap-dien/ directory and writes
 raw structured data to Parquet files. No cleaning or validation —
 that happens in the Silver layer.
 """
+import hashlib
 import json
-import uuid
+import re
 
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -17,6 +18,8 @@ from src.settings import (
     PHAP_DIEN_DIR,
     setup_logging,
 )
+
+_MAPC_RE = re.compile(r"^[a-zA-Z0-9_]+$")
 
 logger = setup_logging(__name__)
 
@@ -82,29 +85,36 @@ def ingest_nodes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFra
         with open(filepath, encoding="utf-8") as f:
             demuc_html = BeautifulSoup(f.read(), "html.parser")
 
-        demuc_chuong = [n for n in demuc_nodes if n["TEN"].startswith("Chương ")]
+            demuc_chuong = [n for n in demuc_nodes if n["TEN"].startswith("Chương ")]
         chuong_list: list[dict] = []
 
         for chuong in demuc_chuong:
+            try:
+                stt_val = convert_roman_to_num(chuong["ChiMuc"])
+            except ValueError:
+                logger.warning("Skipping chapter with invalid ChiMuc: %s", chuong["ChiMuc"])
+                continue
             row = {
                 "mapc": chuong["MAPC"],
                 "ten": chuong["TEN"],
                 "chimuc": chuong["ChiMuc"],
-                "stt": convert_roman_to_num(chuong["ChiMuc"]),
+                "stt": stt_val,
                 "demuc_id": chuong["DeMucID"],
             }
             all_chuong.append(row)
             chuong_list.append(row)
 
         if not chuong_list:
+            synthetic_id = hashlib.sha256(f"synthetic_{demuc_id}".encode()).hexdigest()[:12]
             chuong_list.append({
-                "mapc": f"synthetic_{demuc_id}_{uuid.uuid4().hex[:8]}",
+                "mapc": f"synthetic_{demuc_id}_{synthetic_id}",
                 "ten": "", "chimuc": "0",
                 "stt": 0, "demuc_id": demuc_id,
             })
 
         demuc_dieus = [n for n in demuc_nodes if n not in demuc_chuong]
         stt = 0
+        current_chuong_id = None
 
         for dieu in demuc_dieus:
             if len(chuong_list) == 1:
@@ -116,13 +126,23 @@ def ingest_nodes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFra
                         chuong_id = c["mapc"]
                         break
 
+            if chuong_id != current_chuong_id:
+                stt = 0
+                current_chuong_id = chuong_id
+
             mapc = dieu["MAPC"]
+            if not _MAPC_RE.match(mapc):
+                logger.warning("Skipping dieu with invalid MAPC: %s", mapc)
+                continue
             dieu_el = demuc_html.select(f'a[name="{mapc}"]')
             if not dieu_el:
                 continue
             dieu_el = dieu_el[0]
 
-            ten = str(dieu_el.nextSibling).strip() if dieu_el.nextSibling else ""
+            ten = ""
+            if dieu_el.nextSibling:
+                ns = dieu_el.nextSibling
+                ten = ns.get_text().strip() if hasattr(ns, "get_text") else str(ns).strip()
             ghi_chu_html = dieu_el.parent.nextSibling
             vbqppl = ghi_chu_html.text.strip() if ghi_chu_html else None
             vbqppl_link = None

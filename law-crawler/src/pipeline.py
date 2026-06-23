@@ -69,7 +69,7 @@ def main() -> None:
     try:
         run_pipeline(from_stage=args.from_stage, stage_only=args.stage)
     except Exception as exc:
-        logger.error("%s", exc)
+        logger.error("Pipeline failed: %s", exc, exc_info=True)
         sys.exit(1)
 
 

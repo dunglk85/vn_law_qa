@@ -52,19 +52,19 @@ def test_extract_input_found():
 
 
 def test_extract_input_not_found():
-    """Return None when no parentheses found."""
+    """Return None when no parentheses found or parentheses are empty."""
     from src.helper import extract_input
 
     assert extract_input("no parentheses here") is None
     assert extract_input("") is None
-    assert extract_input("()") == ""
+    assert extract_input("()") is None
 
 
 def test_extract_input_nested():
-    """Extract from first parentheses only."""
+    """Extract from outermost parentheses with greedy match."""
     from src.helper import extract_input
 
-    assert extract_input("(a(b)c)") == "a(b"
+    assert extract_input("(a(b)c)") == "a(b)c"
 
 
 def test_convert_roman_to_num_unknown_char_raises():
@@ -88,3 +88,21 @@ def test_convert_roman_to_num_alphabet_boundary():
     assert convert_roman_to_num("J") == 10
     with pytest.raises(ValueError):
         convert_roman_to_num("K")
+
+
+def test_convert_roman_to_num_empty_string_raises():
+    """P3 fix: empty string must raise ValueError."""
+    from src.helper import convert_roman_to_num
+
+    with pytest.raises(ValueError, match="Empty string"):
+        convert_roman_to_num("")
+
+
+def test_convert_roman_to_num_mixed_roman_vietnamese():
+    """P2 fix: mixed Roman + Vietnamese characters must not crash."""
+    from src.helper import convert_roman_to_num
+
+    # A=1, C=100 → A precedes C so no subtraction → 101
+    assert convert_roman_to_num("AC") == 101
+    # B=2, X=10 → no subtraction (B not in roman_to_num)
+    assert convert_roman_to_num("BX") == 12

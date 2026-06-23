@@ -107,13 +107,27 @@ def main() -> None:
             new_count += 1
 
         if new_count > 0 and new_count % SAVE_EVERY == 0:
-            pd.DataFrame(collected).to_parquet(existing_path, index=False)
+            df_save = pd.DataFrame(collected)
+            tmp_path = existing_path.with_suffix(".tmp")
+            df_save.to_parquet(tmp_path, index=False)
+            try:
+                tmp_path.replace(existing_path)
+            except OSError:
+                import shutil
+                shutil.move(str(tmp_path), str(existing_path))
             logger.info("Saved checkpoint at %d total documents (%d new)", len(collected), new_count)
 
         time.sleep(CRAWL_DELAY)  # I4 fix: configurable via LAW_CRAWL_DELAY env / params.yaml crawl_delay
 
     if new_count > 0 and collected:
-        pd.DataFrame(collected).to_parquet(existing_path, index=False)
+        df_save = pd.DataFrame(collected)
+        tmp_path = existing_path.with_suffix(".tmp")
+        df_save.to_parquet(tmp_path, index=False)
+        try:
+            tmp_path.replace(existing_path)
+        except OSError:
+            import shutil
+            shutil.move(str(tmp_path), str(existing_path))
 
     logger.info("Bronze VBQPPL done: %d new documents crawled (%d total)", new_count, len(collected))
 

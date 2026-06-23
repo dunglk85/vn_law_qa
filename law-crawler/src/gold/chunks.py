@@ -9,6 +9,8 @@ boundaries rather than cutting mid-sentence.
 """
 import re
 
+import math
+
 import pandas as pd
 
 from src.schema import LawDocumentChunk, VBQPPLChunk
@@ -74,7 +76,7 @@ def chunk_text(
         end = start + chunk_size
         if end < len(text):
             adjusted = _prefer_boundary(text, end, start + step, min(len(text), end + chunk_size // 2))
-            end = adjusted
+            end = min(adjusted, start + chunk_size)
         chunk = text[start:end]
         if chunk:
             chunks.append(chunk)
@@ -134,15 +136,20 @@ def build_vbqppl_chunks() -> pd.DataFrame:
     for i in range(len(df)):
         row = df.iloc[i]
         text_val = row.get("noi_dung", "")
+        if isinstance(text_val, float) and math.isnan(text_val):
+            text_val = ""
         chunks = chunk_text(text_val)
+        doc_id = str(row.get("id", f"vb_{i}"))
         for ci, chunk_text_val in enumerate(chunks):
+            parent_id_raw = row.get("chi_muc_cha")
+            parent_id = None if (parent_id_raw is None or (isinstance(parent_id_raw, float) and math.isnan(parent_id_raw))) else str(parent_id_raw)
             all_chunks.append(VBQPPLChunk(
-                chunk_id=f"vb_{row['id']}_c{ci}",
-                source_id=row["id"],
+                chunk_id=f"vb_{doc_id}_c{ci}",
+                source_id=doc_id,
                 chunk_index=ci,
                 total_chunks=len(chunks),
                 text=chunk_text_val,
-                parent_id=row.get("chi_muc_cha"),
+                parent_id=parent_id,
             ))
 
     result = pd.DataFrame([m.model_dump() for m in all_chunks])

@@ -66,18 +66,19 @@ def clean_dieu(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     df = df.drop_duplicates(subset=["mapc"])
-    df["ten"] = df["ten"].str.strip()
-    df["noidung"] = df["noidung"].str.strip()
-    df["chimuc"] = pd.to_numeric(df["chimuc"], errors="coerce").fillna(0).astype(int)
-    df["stt"] = pd.to_numeric(df["stt"], errors="coerce").fillna(0).astype(int)
-    df["vbqppl"] = df["vbqppl"].fillna("").str.strip()
-    # M1 fix: assert canonical FK column names rather than silently falling back
-    for col in _DIEU_FK_COLS:
+    # M1 fix: assert canonical column names FIRST so schema drift gives a clear KeyError
+    for col in list(_DIEU_FK_COLS) + ["vbqppl_link"]:
         if col not in df.columns:
             raise KeyError(
                 f"Expected column {col!r} in dieu bronze data; "
                 f"found: {list(df.columns)}"
             )
+    df["ten"] = df["ten"].str.strip()
+    df["noidung"] = df["noidung"].str.strip()
+    df["chimuc"] = df["chimuc"].str.strip()
+    df["stt"] = pd.to_numeric(df["stt"], errors="coerce").fillna(0).astype(int)
+    df["vbqppl"] = df["vbqppl"].fillna("").str.strip()
+    for col in _DIEU_FK_COLS:
         df[col] = df[col].fillna("").str.strip()
     return df.reset_index(drop=True)
 
@@ -132,7 +133,10 @@ def validate_cross_references(df_lienquan: pd.DataFrame, df_dieu: pd.DataFrame) 
 
     total = len(df_lienquan)
     valid = int((valid1 & valid2).sum())
-    return {"total_refs": total, "valid_refs": valid, "orphan_refs": total - valid}
+    # Count orphan rows (where either ID is invalid), not individual orphan IDs,
+    # to avoid double-counting and orphan_refs > total.
+    orphan_rows = int((~valid1 | ~valid2).sum())
+    return {"total_refs": total, "valid_refs": valid, "orphan_refs": orphan_rows}
 
 
 def main() -> None:

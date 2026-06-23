@@ -15,9 +15,13 @@ def convert_roman_to_num(roman_num: str) -> int:
         Integer value.
 
     Raises:
-        ValueError: If the string contains a character that is neither
-                    a Roman numeral nor a supported Vietnamese index.
+        ValueError: If the input is empty or contains a character that is
+                    neither a Roman numeral nor a supported Vietnamese index.
     """
+    if not roman_num:
+        raise ValueError(
+            "Empty string is not a valid Roman numeral or Vietnamese index."
+        )
     roman_num = roman_num.upper()
     roman_to_num = {
         "I": 1, "V": 5, "X": 10, "L": 50,
@@ -27,7 +31,11 @@ def convert_roman_to_num(roman_num: str) -> int:
     num = 0
     for i, char in enumerate(roman_num):
         if char in roman_to_num:
-            if i > 0 and roman_to_num[char] > roman_to_num[roman_num[i - 1]]:
+            if (
+                i > 0
+                and roman_num[i - 1] in roman_to_num
+                and roman_to_num[char] > roman_to_num[roman_num[i - 1]]
+            ):
                 num += roman_to_num[char] - 2 * roman_to_num[roman_num[i - 1]]
             else:
                 num += roman_to_num[char]
@@ -42,13 +50,17 @@ def convert_roman_to_num(roman_num: str) -> int:
 
 
 def extract_input(input_string: str) -> str | None:
-    """Extract content inside parentheses from a string.
+    """Extract content inside the first set of parentheses from a string.
+
+    Uses a greedy match to capture everything up to the *last* closing
+    parenthesis, which is the expected behavior for onclick handlers
+    like ``select('MAPC_VALUE')`` or ``select('A','B')``.
 
     Args:
         input_string: String containing parenthesized content.
 
     Returns:
-        Content inside first parentheses, or None if not found.
+        Content inside parentheses, or None if not found.
     """
-    match = re.search(r"\((.*?)\)", input_string)
+    match = re.search(r"\((.+)\)", input_string)
     return match.group(1) if match else None

@@ -87,21 +87,23 @@ class TestSilverCleaning:
             "mapc": "abc123",
             "ten": "  Article 1  ",
             "noidung": "  Some content  ",
-            "chimuc": "1",
+            "chimuc": "  1  ",
             "stt": "0",
             "vbqppl": None,
             "demuc_id": "dm1",
             "chuong_id": "ch1",
+            "vbqppl_link": "https://example.com",
         }])
         result = clean_dieu(df)
         assert result.iloc[0]["ten"] == "Article 1"
         assert result.iloc[0]["noidung"] == "Some content"
+        assert result.iloc[0]["chimuc"] == "1"
 
     def test_validate_cross_references(self):
         from src.silver.phap_dien import validate_cross_references
         df_lq = pd.DataFrame([
-            {"dieu_id1": "A", "dieu_id2": "B"},
-            {"dieu_id1": "C", "dieu_id2": "D"},
+            {"dieu_id1": "A", "dieu_id2": "B"},  # both valid → valid row
+            {"dieu_id1": "C", "dieu_id2": "D"},  # both orphaned → 1 orphan row
         ])
         df_dieu = pd.DataFrame({"mapc": ["A", "B"]})
         result = validate_cross_references(df_lq, df_dieu)
@@ -339,3 +341,21 @@ class TestSettings:
         assert s.CRAWL_DELAY == 2.0
         monkeypatch.delenv("LAW_CRAWL_DELAY", raising=False)
         importlib.reload(s)  # restore default for other tests
+
+    def test_save_every_zero_raises(self, monkeypatch):
+        """SAVE_EVERY=0 must raise ValueError (ZeroDivisionError guard)."""
+        monkeypatch.setenv("LAW_SAVE_EVERY", "0")
+        import importlib, src.settings as s
+        with pytest.raises(ValueError, match="must be >= 1"):
+            importlib.reload(s)
+        monkeypatch.delenv("LAW_SAVE_EVERY", raising=False)
+        importlib.reload(s)
+
+    def test_max_retries_zero_raises(self, monkeypatch):
+        """MAX_RETRIES=0 must raise ValueError (silent skip guard)."""
+        monkeypatch.setenv("LAW_MAX_RETRIES", "0")
+        import importlib, src.settings as s
+        with pytest.raises(ValueError, match="must be >= 1"):
+            importlib.reload(s)
+        monkeypatch.delenv("LAW_MAX_RETRIES", raising=False)
+        importlib.reload(s)
