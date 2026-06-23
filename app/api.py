@@ -19,6 +19,7 @@ from app.auth.dependencies import require_role
 from app.auth.router import router as auth_router
 from app.config import config
 from app.core.agentic_service import create_agentic_service
+from app.core.rag_service import RAGService
 from app.exceptions import AppError
 from app.factory import (
     create_a2a_client,
@@ -75,6 +76,14 @@ async def lifespan(app: FastAPI):
         app.state.rate_limiter = create_rate_limiter()
         app.state.session_store = create_session_store()
 
+        app.state.rag_service = RAGService(
+            vector_store=app.state.vector_store,
+            llm=app.state.llm,
+            reranker=app.state.reranker,
+            retriever=app.state.retriever,
+            query_transformer=app.state.query_transformer,
+        )
+
         if config.rag_mode.lower() not in _VALID_RAG_MODES:
             logger.warning(
                 "Unknown RAG_MODE='%s'. Falling back to legacy. Valid: %s",
@@ -111,7 +120,7 @@ async def lifespan(app: FastAPI):
             logger.info("RAG_MODE=agentic: AgenticService initialized with A2A client")
         else:
             app.state.agentic_service = None
-            logger.info("RAG_MODE=legacy: AgenticService not initialized")
+            logger.info("RAG_MODE=legacy: RAGService initialized (default)")
 
         logger.info("Startup complete")
 
@@ -266,10 +275,12 @@ async def ask(
                                     pass
                             break
             else:
-                return JSONResponse(
-                    {"ok": False, "message": "RAG service not configured."},
-                    status_code=503,
+                answer, sources, contexts, tenant_sources = await request.app.state.rag_service.answer(
+                    question=q.question,
+                    category=q.category,
+                    tenant_id=tenant_id,
                 )
+                reasoning_steps = []
     except TimeoutError:
         elapsed = time.perf_counter() - start
         logger.error(
