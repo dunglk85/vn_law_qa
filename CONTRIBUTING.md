@@ -12,7 +12,7 @@ This project uses a **Port/Adapter** (Hexagonal) architecture:
 
 ## Adding a New Adapter Provider
 
-Follow this pattern to add a new provider for any port interface.
+The factory uses a **registry pattern** with `@_register` decorators. Follow this pattern to add a new provider for any port interface.
 
 ### Step 1: Create the adapter file
 
@@ -44,24 +44,18 @@ Naming conventions:
 - Class: `{Provider}{Service}Adapter`
 - Must inherit from the corresponding `{Service}Port`
 
-### Step 2: Add a factory case
+### Step 2: Register the adapter in the factory
 
-In `app/factory.py`, add a new `case` block to the relevant `create_*` function:
+In `app/factory.py`, use the `@_register` decorator:
 
 ```python
-def create_embeddings() -> EmbeddingsPort:
-    match config.embeddings_type:
-        case "openai":
-            from app.adapters.embeddings.openai_embeddings import OpenAIEmbeddingsAdapter
-            return OpenAIEmbeddingsAdapter()
-        case "anthropic":
-            from app.adapters.embeddings.anthropic_embeddings import AnthropicEmbeddingsAdapter
-            return AnthropicEmbeddingsAdapter()
-        case _:
-            raise ValueError(f"Unknown embeddings provider: {config.embeddings_type}")
+@_register("embeddings", "anthropic")
+def _create_anthropic_embeddings(model: str, api_key: str | None) -> EmbeddingsPort:
+    from app.adapters.embeddings.anthropic_embeddings import AnthropicEmbeddingsAdapter
+    return AnthropicEmbeddingsAdapter(model=model, api_key=api_key)
 ```
 
-Import the adapter **inside** the `case` block (lazy import) to keep the factory fast and avoid circular imports.
+The first argument is the **kind** (matches config key prefix), the second is the **key** (matches `*_TYPE` env var value). The import is lazy — it happens only when the adapter is actually resolved.
 
 ### Step 3: Set the environment variable
 
@@ -70,7 +64,7 @@ Import the adapter **inside** the `case` block (lazy import) to keep the factory
 EMBEDDINGS_TYPE=anthropic
 ```
 
-Each `create_*` function reads its corresponding config value (e.g., `config.embeddings_type` → `EMBEDDINGS_TYPE`).
+The public factory function already delegates to `_resolve("embeddings", config.embeddings_type, ...)` — no function body changes needed.
 
 ## Isolation Boundaries
 
@@ -84,20 +78,70 @@ This is enforced by architecture tests in `tests/test_architecture.py`:
 python -m pytest tests/test_architecture.py -v
 ```
 
-The CI pipeline (`.github/workflows/ci.yml`) runs these tests on every push and pull request.
+The CI pipeline (`.github/workflows/ci.yml`) runs linting and tests on every push and pull request.
 
 ## Factory Error Handling
 
-If a config value references an unknown provider, the factory raises `ValueError` with a clear message:
+If a config value references an unknown provider, the factory's `_resolve()` function raises `ValueError` with all supported options listed:
 
 ```python
-raise ValueError(f"Unknown embeddings provider: {config.embeddings_type}")
+raise ValueError(f"Unknown EMBEDDINGS_TYPE='{key}'. Supported: openai, anthropic")
 ```
 
 This ensures misconfigured deployments fail fast at startup.
 
+## Adding an A2A Agent Server
+
+Each agent (legal-research, citation-checker, response-synthesizer) can run as a standalone A2A server:
+
+1. Create a server module in `app/agents/a2a_servers/{agent}_server.py`
+2. It exposes a FastAPI app with A2A-compatible endpoints
+3. The `Dockerfile.a2a` entrypoint maps `A2A_AGENT` env var to the module name
+4. Ports: 8101 (legal-research), 8102 (citation-checker), 8103 (response-synthesizer)
+
+```bash
+# Run locally
+A2A_AGENT=legal-research uvicorn app.agents.a2a_servers.legal_research_server:app --port 8101
+```
+
+## Adding an A2A Remote Client
+
+To add an A2A remote adapter:
+
+1. Create the adapter class in `app/adapters/agents/` implementing the agent interface
+2. Wire it into `create_a2a_client() in `app/factory.py`
+3. Set the corresponding `A2A_*_URL` env var to point to the remote server
+
+## MCP (Model Context Protocol) Tool
+
+The knowledge search tool can run as an MCP server when `MCP_ENABLED=true`:
+
+- Direct mode (default): Uses `app/agents/tools/knowledge_search.py` LangChain `@tool`
+- MCP mode: Uses `app/adapters/tools/mcp_tool_adapter.py` — lazy-connects on first invocation
+
+## Testing
+
+Run tests locally:
+
+```bash
+# All tests (requires Redis for rate_limiter tests)
+python -m pytest tests/ -v
+
+# Architecture boundary tests only
+python -m pytest tests/test_architecture.py -v
+
+# Unit tests only
+python -m pytest tests/unit/ -v
+
+# Integration tests
+python -m pytest tests/integration/ -v
+
+# Exclude Redis-dependent tests
+python -m pytest tests/ --ignore=tests/test_rate_limiter.py -v
+```
+
 ## Code Quality
 
-- Linting: `ruff check .` (configured in `pyproject.toml`)
-- CI enforces linting + architecture tests
+- Linting: `ruff check .` (configured in `pyproject.toml` — line-length 120, py311 target)
+- CI enforces: `ruff check .` + `python -m pytest tests/ --ignore=tests/test_rate_limiter.py -v`
 - Follow existing conventions: `from __future__ import annotations` at the top of every file, `%s`-style logging, `logging.getLogger(__name__)` for new modules

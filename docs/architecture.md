@@ -2,7 +2,8 @@
 
 > **Paige's note**: This document describes the production state of the codebase.
 > Architecture boundary rules are enforced by automated tests in
-> `tests/test_architecture.py` — 9 tests, 9 passing.
+> `tests/test_architecture.py` — 9 tests, 9 passing. All tests pass
+> and lint check (`ruff check .`) is clean on every CI run.
 
 ---
 
@@ -65,6 +66,9 @@ graph TB
         CO["CohereRerankerAdapter"]
         RC["RedisCacheAdapter"]
         PL["ParquetLoaderAdapter"]
+        A2A_REMOTE["A2ARemoteClient"]
+        A2A_FALLBACK["InProcessFallbackClient"]
+        MCP_ADAPTER["MCPKnowledgeSearchTool"]
     end
 
     subgraph StorageLayer["Storage"]
@@ -101,6 +105,9 @@ graph TB
     PG --> PSQL
     RC --> RD
 
+    A2A_REMOTE --> PSQL
+    A2A_FALLBACK --> PSQL
+
     style API fill:#fff3e0,stroke:#e65100
     style RL fill:#fff3e0,stroke:#e65100
     style AUTH fill:#fff3e0,stroke:#e65100
@@ -127,6 +134,8 @@ graph TB
 | **API** (`app/api.py`) | Factory, Config, Core services | `app.adapters` directly |
 | **Agents** (`app/agents/`) | `app.core.models`, Ports | `shared`, `app.adapters` |
 | **Auth** (`app/auth/`) | Ports, Config, `app.core.models` | `app.adapters` directly |
+| **A2A Servers** (`app/agents/a2a_servers/`) | Agents, Config, `app.core.models` | `app.adapters` directly |
+| **A2A Clients** (`app/adapters/agents/`) | Ports, Config, `app.core.a2a_client` | `app.core` (business logic), `app.api` |
 
 ---
 
@@ -137,49 +146,82 @@ company-knowledge-assistant/
 ├── app/
 │   ├── __init__.py
 │   ├── api.py                 # FastAPI bootstrap + endpoints
-│   ├── config.py              # AppConfig dataclass (50+ env vars)
-│   ├── factory.py             # Config-driven DI factory (Port → Adapter)
+│   ├── config.py              # AppConfig dataclass (60+ env vars)
+│   ├── exceptions.py          # AppError, ConfigurationError
+│   ├── factory.py             # Config-driven DI factory (registry pattern)
 │   ├── core/
 │   │   ├── agentic_service.py # LangGraph multi-agent RAG service
 │   │   ├── rag_service.py     # Traditional single-pass RAG service
 │   │   ├── ingest_service.py  # Parquet loading + embedding pipeline
 │   │   ├── models.py          # Article, Citation, Task dataclasses + utilities
+│   │   ├── a2a_client.py      # Abstract A2A client interface
 │   │   ├── retry.py           # Exponential backoff retry wrapper
-│   │   └── reasoning_step.py  # Agent trace data shape
+│   │   ├── reasoning_step.py  # Agent trace data shape
+│   │   └── token_tracker.py   # LLM token usage tracking
 │   ├── agents/
 │   │   ├── supervisor_agent.py           # LangGraph state machine (6 nodes)
 │   │   ├── legal_research_agent.py       # HyDE + decomposition + rerank
 │   │   ├── citation_checker_agent.py     # 3-gate hallucination firewall
 │   │   ├── response_synthesizer_agent.py # Vietnamese legal response gen
-│   │   └── tools/
-│   │       └── knowledge_search.py       # LangChain @tool wrapper
+│   │   ├── tools/
+│   │   │   └── knowledge_search.py       # LangChain @tool wrapper
+│   │   └── a2a_servers/
+│   │       ├── legal_research_server.py       # A2A agent server (port 8101)
+│   │       ├── citation_checker_server.py     # A2A agent server (port 8102)
+│   │       └── response_synthesizer_server.py # A2A agent server (port 8103)
 │   ├── ports/                 # 10 abstract interfaces
 │   │   ├── cache.py, document_loader.py, embeddings.py, llm.py
 │   │   ├── query_transformer.py, rate_limiter.py, reranker.py
 │   │   ├── retriever.py, session_store.py, vector_store.py
-│   └── adapters/              # 20+ concrete implementations
-│       ├── caches/            # RedisCacheAdapter, NoneCacheAdapter
-│       ├── document_loaders/  # ParquetLoaderAdapter
-│       ├── embeddings/        # OpenAIEmbeddingsAdapter
-│       ├── llms/              # OpenAILLMAdapter
-│       ├── rate_limiters/     # RedisRateLimiterAdapter, MemoryRateLimiterAdapter
-│       ├── rerankers/         # CohereRerankerAdapter, CrossEncoder*, MMR*, None*
-│       ├── retrievers/        # Dense*, BM25*, HybridInterleaving*, HybridRRF*
-│       ├── session_stores/    # RedisSessionStore, MemorySessionStore
-│       └── vector_stores/     # PGVectorStoreAdapter
-│   └── auth/
-│       ├── router.py          # /auth/token, /auth/refresh (JWT + refresh tokens)
-│       ├── jwt.py             # Token create/decode/validate
-│       └── dependencies.py    # require_role(), get_current_user()
+│   │   └── (10 total)
+│   ├── adapters/              # 25+ concrete implementations
+│   │   ├── agents/            # A2ARemoteClient, InProcessFallbackClient
+│   │   ├── caches/            # RedisCacheAdapter, NoneCacheAdapter
+│   │   ├── document_loaders/  # ParquetLoaderAdapter
+│   │   ├── embeddings/        # OpenAIEmbeddingsAdapter
+│   │   ├── llms/              # OpenAILLMAdapter
+│   │   ├── rate_limiters/     # RedisRateLimiterAdapter, MemoryRateLimiterAdapter
+│   │   ├── rerankers/         # CohereRerankerAdapter, CrossEncoder*, MMR*, None*
+│   │   ├── retrievers/        # Dense*, BM25*, HybridInterleaving*, HybridRRF*
+│   │   ├── session_stores/    # RedisSessionStore, MemorySessionStore
+│   │   ├── tools/             # MCP tool adapter
+│   │   └── vector_stores/     # PGVectorStoreAdapter
+│   ├── auth/
+│   │   ├── router.py          # /auth/token, /auth/refresh (JWT + refresh tokens)
+│   │   ├── jwt.py             # Token create/decode/validate
+│   │   └── dependencies.py    # require_role(), get_current_user()
 │   └── static/                # Demo-only frontend (not production UI)
 │       ├── index.html         # Single-page query interface for testing
 │       └── style.css          # Basic styling — no UX spec exists
 ├── tests/
-│   └── test_architecture.py   # 9 architectural boundary tests
-│   └── test_rate_limiter.py   # Unit tests for memory & Redis rate limiters
-├── Dockerfile                 # python:3.11-slim, non-root user, no --reload
-├── docker-compose.yml         # postgres + redis + app + pgweb
-└── .env.example               # All config keys with placeholder values
+│   ├── test_architecture.py   # 9 architectural boundary tests
+│   ├── test_rate_limiter.py   # Unit tests for memory & Redis rate limiters
+│   ├── test_a2a_client.py     # A2A client unit tests
+│   ├── test_a2a_phase2.py     # A2A phase 2 integration tests
+│   ├── test_mcp_tool.py       # MCP tool adapter tests
+│   ├── conftest.py            # Shared test fixtures (env setup)
+│   ├── unit/
+│   │   ├── test_config.py             # Config validation
+│   │   ├── test_factory.py            # Factory resolution
+│   │   ├── test_agentic_service.py    # AgenticService logic
+│   │   ├── test_supervisor_agent.py   # Supervisor agent
+│   │   ├── test_llm_ainvoke.py        # LLM adapter invoke
+│   │   ├── test_auth_jwt.py           # JWT token logic
+│   │   ├── test_exceptions.py         # Error handling
+│   │   └── test_token_tracker.py      # Token usage tracking
+│   └── integration/
+│       └── test_api.py        # FastAPI integration tests (auth, /ask, /health)
+├── scripts/
+│   ├── a2a-entrypoint.sh      # A2A agent container entrypoint
+│   ├── generate_test_parquet.py # Test data generator
+│   └── eval_ragas.py          # RAGAS evaluation script
+├── Dockerfile                 # Multi-stage build, python:3.12-slim, non-root
+├── Dockerfile.a2a             # A2A agent server image (shared base)
+├── docker-compose.yml         # postgres + redis + app + a2a agents + pgweb
+├── .env.example               # All config keys with placeholder values
+├── pyproject.toml             # Ruff config (line-length 120, py311 target)
+├── requirements.txt           # Production deps (fastapi, langchain, pgvector, etc.)
+└── requirements-dev.txt       # Dev deps (ruff, pytest, pytest-asyncio)
 ```
 
 ---
@@ -272,39 +314,60 @@ Every field is backed by an environment variable with a sensible default.
 
 | Category | Env Vars | Purpose / Default |
 |----------|----------|-------------------|
-| **Provider selection** | `VECTOR_STORE_TYPE`, `LLM_TYPE`, `EMBEDDINGS_TYPE`, `RERANKER_TYPE`, `CACHE_TYPE`, `RETRIEVER_TYPE`, `QUERY_TRANSFORMER_TYPE`, `RAG_MODE` | Select which adapter each port binds to. Default: `VECTOR_STORE_TYPE=pgvector`, `RAG_MODE=traditional` |
+| **Provider selection** | `VECTOR_STORE_TYPE`, `LLM_TYPE`, `EMBEDDINGS_TYPE`, `RERANKER_TYPE`, `CACHE_TYPE`, `RETRIEVER_TYPE`, `QUERY_TRANSFORMER_TYPE`, `DOCUMENT_LOADER_TYPE`, `RAG_MODE` | Select which adapter each port binds to. Default: `VECTOR_STORE_TYPE=pgvector`, `DOCUMENT_LOADER_TYPE=parquet`, `RAG_MODE=legacy` |
 | **Connection strings** | `DATABASE_URL`, `REDIS_URL` | Infrastructure endpoints. Default: `DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db` |
 | **API keys** | `OPENAI_API_KEY`, `CO_API_KEY`, `LANGSMITH_API_KEY` | Provider credentials. Startup warning issued if unset. |
 | **Model names** | `LLM_MODEL`, `EMBEDDINGS_MODEL`, `RERANKER_MODEL` | Model identifiers. Default: `LLM_MODEL=gpt-4o-mini` |
-| **RAG tuning** | `RETRIEVAL_K`, `RRF_K`, `RERANKER_TOP_N`, etc. | Retrieval parameters. Chunking is handled by the law-crawler pipeline. |
-| **Index params** | `INDEX_TYPE`, `HNSW_M`, `HNSW_EF_CONSTRUCTION`, `IVFFLAT_LISTS`, `IVFFLAT_PROBES` | Vector index configuration. Default: `INDEX_TYPE=hnsw` |
-| **Agent timeouts** | `LLM_TIMEOUT`, `AGENT_TIMEOUT`, `ASK_TIMEOUT`, `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW` | Timeouts and rate limit thresholds. Default: `ASK_TIMEOUT=120` |
-| **Agent tuning** | `MAX_RETRIES`, `QUALITY_THRESHOLD`, `N_RESULTS_PER_VECTOR`, `TOP_K_RESEARCH`, `TOP_K_LLM_SCORE`, `HYDE_ENABLED`, `SUBQUERY_COUNT`, `RELEVANCE_THRESHOLD` | Agent behavior knobs. Default: `HYDE_ENABLED=true` |
-| **Auth** | `JWT_SECRET`, `JWT_ALGORITHM`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS`, `ADMIN_USERNAME`, `ADMIN_PASSWORD` | JWT and admin credentials. Default: `JWT_SECRET=<strong-random>` |
-| **Session** | `SESSION_TTL_SECONDS`, `MAX_HISTORY_TOKENS`, `RECENT_TURNS_TO_KEEP` | Session and history management. Default: `SESSION_TTL_SECONDS=3600` |
+| **RAG tuning** | `RETRIEVAL_K`, `RRF_K`, `RERANKER_TOP_N`, `MMR_LAMBDA_MULT`, `CACHE_DISTANCE_THRESHOLD`, `DATA_DIR` | Retrieval parameters. Chunking is handled by the law-crawler pipeline. |
+| **Index params** | `INDEX_TYPE`, `HNSW_M`, `HNSW_EF_CONSTRUCTION`, `HNSW_EF_SEARCH`, `IVFFLAT_LISTS`, `IVFFLAT_PROBES` | Vector index configuration. Default: `INDEX_TYPE=hnsw` |
+| **Agent timeouts** | `LLM_TIMEOUT`, `AGENT_TIMEOUT`, `ASK_TIMEOUT`, `RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW` | Timeouts and rate limit thresholds. Default: `ASK_TIMEOUT=120`, `RATE_LIMIT_MAX=30` |
+| **Agent tuning** | `MAX_RETRIES`, `QUALITY_THRESHOLD`, `N_RESULTS_PER_VECTOR`, `TOP_K_RESEARCH`, `TOP_K_LLM_SCORE`, `HYDE_ENABLED`, `SUBQUERY_COUNT`, `RELEVANCE_THRESHOLD` | Agent behavior knobs. Default: `HYDE_ENABLED=true`, `QUALITY_THRESHOLD=0.75` |
+| **Retry / Error Recovery** | `TOOL_RETRY_MAX_ATTEMPTS`, `TOOL_RETRY_BASE_DELAY` | Tool retry with exponential backoff. Default: `TOOL_RETRY_MAX_ATTEMPTS=2` |
+| **Session / Memory** | `SESSION_TTL_SECONDS`, `MAX_HISTORY_TOKENS`, `RECENT_TURNS_TO_KEEP` | Session and history management. Default: `SESSION_TTL_SECONDS=3600`, `MAX_HISTORY_TOKENS=4096` |
+| **Auth** | `JWT_SECRET`, `JWT_ALGORITHM`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS`, `ADMIN_USERNAME`, `ADMIN_PASSWORD` | JWT and admin credentials. Default: `ACCESS_TOKEN_EXPIRE_MINUTES=30`, `REFRESH_TOKEN_EXPIRE_DAYS=7` |
+| **MCP (Model Context Protocol)** | `MCP_ENABLED`, `MCP_SERVER_TIMEOUT`, `MCP_MAX_RESTARTS` | MCP-backed knowledge search tool. Default: `MCP_ENABLED=false` |
+| **A2A (Agent-to-Agent Protocol)** | `A2A_LEGAL_RESEARCH_URL`, `A2A_CITATION_CHECKER_URL`, `A2A_RESPONSE_SYNTHESIZER_URL`, `A2A_TASK_TIMEOUT`, `A2A_MAX_RETRIES` | Remote agent endpoints for A2A protocol. Default: empty (in-process fallback) |
+| **LangSmith (Observability)** | `LANGCHAIN_TRACING_V2`, `LANGSMITH_PROJECT` | LLM call tracing. Default: `LANGSMITH_PROJECT=company-knowledge-assistant` |
 
 ---
 
 ## 5. Factory — Dependency Injection
 
-`app/factory.py` is the central DI container (see [§1](#1-guiding-architecture-ports--adapters-hexagonal) for layering rules). Each `create_*()` function:
+`app/factory.py` is the central DI container (see [§1](#1-guiding-architecture-ports--adapters-hexagonal) for layering rules). It uses a **registry pattern** with Python decorators:
 
-1. Reads the relevant `*_TYPE` env var from config
-2. Matches on it with `case` blocks
-3. Lazy-imports the concrete adapter class
-4. Wires it with config values from `AppConfig`
+1. Each adapter factory is registered via `@_register("kind", "key")` decorator
+2. Public `create_*(**)` functions delegate to `_resolve("kind", config.xxx_type, **kwargs)`
+3. Lazy imports happen inside the registered function body (no circular deps)
+4. Unknown types raise `ValueError` with all supported options listed
 
 ```python
+_registry: dict[tuple[str, str], Callable] = {}
+
+def _register(kind: str, key: str):
+    def decorator(fn: Callable):
+        _registry[(kind, key)] = fn
+        return fn
+    return decorator
+
+def _resolve(kind: str, key: str, **kwargs):
+    supported = {k: fn for (kk, k), fn in _registry.items() if kk == kind}
+    fn = supported.get(key)
+    if fn is None:
+        raise ValueError(f"Unknown {kind}='{key}'. Supported: {sorted(supported)}")
+    return fn(**kwargs)
+
+@_register("llm", "openai")
+def _create_openai_llm(model: str, api_key: str | None) -> LLMPort:
+    from app.adapters.llms.openai_llm import OpenAILLMAdapter
+    return OpenAILLMAdapter(model=model, api_key=api_key)
+
 def create_llm() -> LLMPort:
-    match config.llm_type:
-        case "openai":
-            from app.adapters.llms.openai_llm import OpenAILLMAdapter
-            return OpenAILLMAdapter(model=config.llm_model, api_key=config.openai_api_key)
-        case _:
-            raise ValueError(...)
+    return _resolve("llm", config.llm_type,
+                    model=config.llm_model,
+                    api_key=config.openai_api_key)
 ```
 
-**Key property**: No adapter imports `app.config` directly. All configuration reaches adapters through constructor parameters from the factory.
+**Key property**: No adapter imports `app.config` directly. All configuration reaches adapters through constructor parameters from the factory. Adding a new provider = write the adapter + register it — no switch/match changes needed.
 
 ---
 
@@ -361,22 +424,38 @@ stateDiagram-v2
 
 ```
 services:
-  postgres: pgvector/pgvector:pg17  # PostgreSQL + vector extension
-  redis:    redis/redis-stack:7.4.0  # Caching + rate limiting + sessions
-  app:      build: ./Dockerfile       # python:3.11-slim, port 8000
-  pgweb:    sosedoff/pgweb           # Admin UI (no auth — dev only)
+  postgres:                   pgvector/pgvector:pg17  # PostgreSQL + vector extension
+  redis:                      redis/redis-stack:7.4.0  # Caching + rate limiting + sessions
+  app:                        build: ./Dockerfile       # python:3.12-slim (multi-stage), port 8000
+  legal-research-agent:       build: ./Dockerfile.a2a   # A2A agent (port 8101)
+  citation-checker-agent:     build: ./Dockerfile.a2a   # A2A agent (port 8102)
+  response-synthesizer-agent: build: ./Dockerfile.a2a   # A2A agent (port 8103)
+  pgweb:                      sosedoff/pgweb           # Admin UI (no auth — dev only)
 ```
 
 ### Dockerfile
 
 ```
-FROM python:3.11-slim
-  → system deps (build-essential, curl)
-  → pip install -r requirements.txt
-  → pre-download NLTK data
-  → COPY app/ data/
-  → groupadd + useradd appuser
-  → CMD uvicorn app.api:app --host 0.0.0.0 --port 8000
+Multi-stage build (builder → runtime):
+  builder: python:3.12-slim
+    → system deps (build-essential)
+    → pip install requirements.txt (incl. torch --cpu)
+  runtime: python:3.12-slim
+    → system deps (curl, ca-certificates)
+    → copy site-packages from builder
+    → COPY app/ directory
+    → groupadd + useradd appuser
+    → CMD uvicorn app.api:app --host 0.0.0.0 --port 8000
+```
+
+### Dockerfile.a2a (Agent-to-Agent)
+
+```
+Shares same base as main app:
+  Multi-stage build (python:3.12-slim, same deps)
+  → ENTRYPOINT ["/app/entrypoint.sh"]
+  → A2A_AGENT env selects server module
+  → Exposes ports 8101–8103
 ```
 
 ### Volume Strategy (docker-compose)
@@ -384,6 +463,7 @@ FROM python:3.11-slim
 - `./.env:/app/.env` — runtime env vars (read-only)
 - `./data:/app/data` — hot-reloadable document corpus
 - **No** `.:/app` — container uses the built image, not host source
+- **Persistent volumes**: `pgdata` (PostgreSQL), `redis-data` (Redis)
 
 ### Deployment Topology
 
@@ -394,6 +474,9 @@ graph LR
     end
     subgraph Docker
         App["app :8000"]
+        A2A_LR["legal-research-agent :8101"]
+        A2A_CC["citation-checker-agent :8102"]
+        A2A_RS["response-synthesizer-agent :8103"]
         PG["postgres :5432<br/>(pgvector)"]
         Redis["redis :6379"]
         PGWeb["pgweb :8081<br/>(dev only)"]
@@ -401,6 +484,12 @@ graph LR
     Client -->|HTTP| App
     App -->|asyncpg| PG
     App -->|redis-py| Redis
+    App -->|HTTP / A2A| A2A_LR
+    App -->|HTTP / A2A| A2A_CC
+    App -->|HTTP / A2A| A2A_RS
+    A2A_LR -->|asyncpg| PG
+    A2A_CC -->|asyncpg| PG
+    A2A_RS -->|asyncpg| PG
     PGWeb -->|SQL| PG
     App -->|reads| Vol1["./.env"]
     App -->|reads/writes| Vol2["./data"]
@@ -429,10 +518,10 @@ the layering rules defined in [§1](#1-guiding-architecture-ports--adapters-hexa
 
 ## 10. Patch History
 
-Detailed changes are tracked in [`CHANGELOG.md`](../CHANGELOG.md).
 The cycle that established the current architecture resolved 15 items
 (P0–P2), including startup crash fixes, config wiring cleanup,
 adapter isolation, agent import rules, and Docker hardening.
+See the `INTEGRATION_SUMMARY.md` and code-level docstrings for detailed change tracking.
 
 ## 11. Known Gaps
 
@@ -440,7 +529,7 @@ adapter isolation, agent import rules, and Docker hardening.
 |-------|----------|--------|
 | Live API keys in `.env` (not git-tracked, but on disk) | Critical | Set as env vars, not file |
 | No Alembic auto-migration on container startup | Medium | Add entrypoint script |
-| No unit tests for RAG services, agents, adapters | Medium | Coverage gap |
+| No unit tests for adapters (LLM, vector store, cache) | Medium | Coverage gap |
 | `pgweb` exposed without auth on port 8081 | Low | Dev-only; add basic auth for staging |
 | `app/static/` frontend has no UX spec | Low | Demo-only; not intended for production end users |
 
@@ -486,13 +575,26 @@ Provider SDK errors (OpenAI, Cohere) propagate as `HTTP 502` after retry exhaust
 | Category | Location | Scope |
 |----------|----------|-------|
 | **Architecture boundary** | `tests/test_architecture.py` | AST-level import rule enforcement (9 tests) |
-| **Unit** | `tests/test_rate_limiter.py` | Memory + Redis rate limiter logic |
-| **Coverage gap** | — | No unit tests for RAG services, agents, or adapters (see §11) |
+| **Unit — config** | `tests/unit/test_config.py` | AppConfig validation and env parsing |
+| **Unit — factory** | `tests/unit/test_factory.py` | Registry resolution and error cases |
+| **Unit — services** | `tests/unit/test_agentic_service.py` | AgenticService orchestration logic |
+| **Unit — agents** | `tests/unit/test_supervisor_agent.py` | Supervisor agent state machine |
+| **Unit — LLM** | `tests/unit/test_llm_ainvoke.py` | LLM adapter async invoke |
+| **Unit — auth** | `tests/unit/test_auth_jwt.py` | JWT create/decode/validate |
+| **Unit — exceptions** | `tests/unit/test_exceptions.py` | Error handling and custom exceptions |
+| **Unit — token tracking** | `tests/unit/test_token_tracker.py` | Token usage counting and reset |
+| **Unit — rate limiter** | `tests/test_rate_limiter.py` | Memory + Redis rate limiter logic |
+| **Unit — A2A client** | `tests/test_a2a_client.py` | A2A remote and fallback client |
+| **Integration — API** | `tests/integration/test_api.py` | FastAPI endpoints (auth, /ask, /health) |
+| **Integration — A2A** | `tests/test_a2a_phase2.py` | A2A agent-to-agent protocol |
+| **Integration — MCP** | `tests/test_mcp_tool.py` | MCP tool adapter lifecycle |
 
-Integration and E2E test suites are planned but not yet implemented.
+All tests run on every CI push via `python -m pytest tests/ --ignore=tests/test_rate_limiter.py -v` (rate limiter tests excluded in CI because they require Redis). To run all tests locally including Redis-dependent: `python -m pytest tests/ -v`.
+
+Linting: `ruff check .` — configured in `pyproject.toml` (line-length 120, py311 target).
 
 ## 15. See Also
 
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — Contribution guidelines
 - [`tests/test_architecture.py`](../tests/test_architecture.py) — Architecture boundary test source
-- `CHANGELOG.md` — Project change history
+- `INTEGRATION_SUMMARY.md` — Integration change history
