@@ -27,7 +27,7 @@ class TestMCPKnowledgeSearchTool:
         assert results[0]["source"] == "test.pdf"
         assert results[0]["score"] == 0.95
         mock_session.call_tool.assert_awaited_once_with(
-            "knowledge_search", {"query": "test query", "k": None}
+            "knowledge_search", {"query": "test query", "k": 5}
         )
 
     @pytest.mark.asyncio
