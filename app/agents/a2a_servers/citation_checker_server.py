@@ -165,8 +165,8 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
 
 
 def _now() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
+    from datetime import UTC, datetime
+    return datetime.now(UTC).isoformat()
 
 
 async def _error_stream(task_id: str, message: str):
