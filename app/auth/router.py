@@ -46,20 +46,26 @@ class _RefreshTokenStore:
         data = {"user_id": user_id, "expires": expires.isoformat()}
         r = await self._get_redis()
         if r is not None:
-            ttl = max(int((expires - datetime.now(UTC)).total_seconds()), 1)
-            await r.setex(self._key(token), ttl, json.dumps(data))
-        else:
-            self._memory[token] = {"user_id": user_id, "expires": expires}
+            try:
+                ttl = max(int((expires - datetime.now(UTC)).total_seconds()), 1)
+                await r.setex(self._key(token), ttl, json.dumps(data))
+                return
+            except Exception as exc:
+                logger.warning("Redis write failed for refresh token, using in-memory: %s", exc)
+        self._memory[token] = {"user_id": user_id, "expires": expires}
 
     async def pop(self, token: str) -> dict[str, Any] | None:
         r = await self._get_redis()
         if r is not None:
-            raw = await r.getdel(self._key(token))
-            if raw is None:
-                return None
-            data = json.loads(raw)
-            data["expires"] = datetime.fromisoformat(data["expires"])
-            return data
+            try:
+                raw = await r.getdel(self._key(token))
+                if raw is None:
+                    return None
+                data = json.loads(raw)
+                data["expires"] = datetime.fromisoformat(data["expires"])
+                return data
+            except Exception as exc:
+                logger.warning("Redis read failed for refresh token, using in-memory: %s", exc)
         return self._memory.pop(token, None)
 
 

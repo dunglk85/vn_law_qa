@@ -72,6 +72,7 @@ def _row_to_law_chunk(row: dict) -> LawDocumentChunk:
     for k in ("chunk_id", "article_id", "title", "chude", "demuc", "chuong"):
         kwargs[k] = _safe_str(kwargs.get(k))
     kwargs["text"] = _safe_str(kwargs.get("text"))
+    kwargs["schema_version"] = _safe_str(kwargs.get("schema_version")) or "1.0.0"
     return LawDocumentChunk(**kwargs)
 
 
@@ -84,6 +85,7 @@ def _row_to_vb_chunk(row: dict) -> VBQPPLChunk:
     kwargs["text"] = _safe_str(kwargs.get("text"))
     parent = kwargs.get("parent_id")
     kwargs["parent_id"] = str(parent) if pd.notna(parent) and parent is not None else None
+    kwargs["schema_version"] = _safe_str(kwargs.get("schema_version")) or "1.0.0"
     return VBQPPLChunk(**kwargs)
 
 

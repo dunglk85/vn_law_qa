@@ -96,6 +96,10 @@ def mock_deps():
         mock_a2a.return_value = MagicMock()
 
         app.state.rate_limiter = AsyncMock()
+        app.state.agentic_service = None
+        rag_service = AsyncMock()
+        rag_service.answer = AsyncMock(return_value=("answer", ["source"], ["context"], None))
+        app.state.rag_service = rag_service
 
         yield {
             "vector_store": mock_vs,
