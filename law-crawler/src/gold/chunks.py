@@ -3,20 +3,53 @@
 Reads flattened gold documents and splits into overlapping
 text chunks suitable for vector embedding. Produces metadata-rich
 chunks with source document tracing.
+
+Chunking is paragraph-aware: it prefers to break at paragraph
+boundaries rather than cutting mid-sentence.
 """
-import sys
-from pathlib import Path
+import re
 
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from src.schema import LawDocumentChunk, VBQPPLChunk
 from src.settings import CHUNK_OVERLAP, CHUNK_SIZE, GOLD, setup_logging
 
 logger = setup_logging(__name__)
 
+_PARAGRAPH_RE = re.compile(r"\n\s*\n")
+_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 
-def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
-    """Split text into overlapping chunks of approximately chunk_size characters."""
+_MIN_STEP_FACTOR = 10
+
+
+def _prefer_boundary(text: str, pos: int, min_pos: int, max_pos: int) -> int:
+    """Adjust a cut position to the nearest paragraph or sentence boundary.
+
+    Scans forward from *pos* within *max_pos* for a paragraph break,
+    then a sentence break. If none found within range, falls back to
+    the original position.
+    """
+    # Try paragraph boundary first
+    for m in _PARAGRAPH_RE.finditer(text, pos, max_pos):
+        if m.start() >= min_pos:
+            return m.start()
+    # Then sentence boundary
+    for m in _SENTENCE_RE.finditer(text, pos, max_pos):
+        if m.start() >= min_pos:
+            return m.start() + 1
+    return pos
+
+
+def chunk_text(
+    text: str,
+    chunk_size: int = CHUNK_SIZE,
+    overlap: int = CHUNK_OVERLAP,
+) -> list[str]:
+    """Split text into overlapping chunks with boundary awareness.
+
+    Each chunk is at most *chunk_size* characters. Chunks prefer
+    paragraph breaks over sentence breaks over arbitrary character cuts.
+    """
     if not text or not text.strip():
         return []
     text = text.strip()
@@ -27,10 +60,11 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
         raise ValueError(
             f"chunk_size ({chunk_size}) must be greater than overlap ({overlap})"
         )
-    min_step = max(1, chunk_size // 10)
-    if chunk_size - overlap < min_step:
+    min_step = max(1, chunk_size // _MIN_STEP_FACTOR)
+    step = chunk_size - overlap
+    if step < min_step:
         raise ValueError(
-            f"chunk_size ({chunk_size}) minus overlap ({overlap}) = {chunk_size - overlap}, "
+            f"chunk_size ({chunk_size}) minus overlap ({overlap}) = {step}, "
             f"minimum step is {min_step} to avoid excessive chunk generation"
         )
 
@@ -38,9 +72,13 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
     start = 0
     while start < len(text):
         end = start + chunk_size
+        if end < len(text):
+            adjusted = _prefer_boundary(text, end, start + step, min(len(text), end + chunk_size // 2))
+            end = adjusted
         chunk = text[start:end]
-        chunks.append(chunk)
-        start += chunk_size - overlap
+        if chunk:
+            chunks.append(chunk)
+        start += step
 
     return chunks
 
@@ -54,7 +92,7 @@ def build_chunks() -> pd.DataFrame:
     df = pd.read_parquet(doc_path)
     logger.info("Chunking %d documents", len(df))
 
-    all_chunks: list[dict] = []
+    all_chunks: list[LawDocumentChunk] = []
     for i in range(len(df)):
         row = df.iloc[i]
         article_id = row.get("mapc", f"doc_{i}")
@@ -65,21 +103,22 @@ def build_chunks() -> pd.DataFrame:
         chuong = row.get("chuong_ten", "")
 
         chunks = chunk_text(text)
-        for ci, chunk in enumerate(chunks):
-            all_chunks.append({
-                "chunk_id": f"{article_id}_c{ci}",
-                "article_id": article_id,
-                "title": title,
-                "chude": chude,
-                "demuc": demuc,
-                "chuong": chuong,
-                "chunk_index": ci,
-                "total_chunks": len(chunks),
-                "text": chunk,
-            })
+        for ci, chunk_text_val in enumerate(chunks):
+            all_chunks.append(LawDocumentChunk(
+                chunk_id=f"{article_id}_c{ci}",
+                article_id=article_id,
+                title=title,
+                chude=chude,
+                demuc=demuc,
+                chuong=chuong,
+                chunk_index=ci,
+                total_chunks=len(chunks),
+                text=chunk_text_val,
+            ))
 
-    logger.info("Produced %d chunks from %d articles", len(all_chunks), len(df))
-    return pd.DataFrame(all_chunks)
+    result = pd.DataFrame([m.model_dump() for m in all_chunks])
+    logger.info("Produced %d chunks from %d articles", len(result), len(df))
+    return result
 
 
 def build_vbqppl_chunks() -> pd.DataFrame:
@@ -91,24 +130,24 @@ def build_vbqppl_chunks() -> pd.DataFrame:
     df = pd.read_parquet(vb_path)
     logger.info("Chunking %d VBQPPL entries", len(df))
 
-    all_chunks: list[dict] = []
+    all_chunks: list[VBQPPLChunk] = []
     for i in range(len(df)):
         row = df.iloc[i]
-        text = row.get("noi_dung", "")
-        chunks = chunk_text(text)
-        for ci, chunk in enumerate(chunks):
-            all_chunks.append({
-                "chunk_id": f"vb_{row['id']}_c{ci}",
-                "source_id": row["id"],
-                "source_type": "vbqppl",
-                "parent_id": row.get("chi_muc_cha"),
-                "chunk_index": ci,
-                "total_chunks": len(chunks),
-                "text": chunk,
-            })
+        text_val = row.get("noi_dung", "")
+        chunks = chunk_text(text_val)
+        for ci, chunk_text_val in enumerate(chunks):
+            all_chunks.append(VBQPPLChunk(
+                chunk_id=f"vb_{row['id']}_c{ci}",
+                source_id=row["id"],
+                chunk_index=ci,
+                total_chunks=len(chunks),
+                text=chunk_text_val,
+                parent_id=row.get("chi_muc_cha"),
+            ))
 
-    logger.info("Produced %d VBQPPL chunks", len(all_chunks))
-    return pd.DataFrame(all_chunks)
+    result = pd.DataFrame([m.model_dump() for m in all_chunks])
+    logger.info("Produced %d VBQPPL chunks", len(result))
+    return result
 
 
 def main() -> None:

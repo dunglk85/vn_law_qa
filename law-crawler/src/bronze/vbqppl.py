@@ -4,16 +4,14 @@ Fetches full-text legal documents from vbpl.vn using ItemIDs
 extracted from the Pháp Điển bronze layer. Stores raw HTML content
 in Parquet.
 """
+import os
 import re
-import sys
 import time
-from pathlib import Path
 
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.settings import (
     BRONZE_PHAP_DIEN,
     BRONZE_VBQPPL,
@@ -35,7 +33,8 @@ def get_item_id(url: str | None) -> str | None:
     return match.group(1) if match else None
 
 
-_USER_AGENT = "law-crawler/1.0 (research project; contact@example.com)"
+_USER_AGENT = os.getenv("LAW_CRAWLER_USER_AGENT",
+                       "law-crawler/1.0 (research project; contact@example.com)")
 
 
 def fetch_document(item_id: str) -> str | None:

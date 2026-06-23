@@ -6,12 +6,8 @@ Each row is one article (điều) with full hierarchical context:
 
 Also produces enriched VBQPPL document views.
 """
-import sys
-from pathlib import Path
-
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.settings import GOLD, SILVER_PHAP_DIEN, SILVER_VBQPPL, setup_logging
 
 logger = setup_logging(__name__)
@@ -67,17 +63,17 @@ def build_phap_dien_documents() -> pd.DataFrame:
     else:
         df_dieu["chude_ten"] = ""
 
-    # Build a rich text field with full context for embedding
-    df_dieu["full_context"] = df_dieu.apply(
-        lambda row: (
-            f"Chủ đề: {row.get('chude_ten', '')}\n"
-            f"Đề mục: {row.get('demuc_ten', '')}\n"
-            f"Chương: {row.get('chuong_ten', '')}\n"
-            f"Điều: {row.get('ten', '')}\n"
-            + (f"VBQPPL: {row.get('vbqppl', '')}\n" if row.get("vbqppl") else "")
-            + f"{row.get('noidung', '')}"
-        ),
-        axis=1,
+    # Build a rich text field with full context for embedding (vectorized)
+    base = (
+        "Chủ đề: " + df_dieu["chude_ten"].fillna("") + "\n"
+        "Đề mục: " + df_dieu["demuc_ten"].fillna("") + "\n"
+        "Chương: " + df_dieu["chuong_ten"].fillna("") + "\n"
+        "Điều: " + df_dieu["ten"].fillna("") + "\n"
+    )
+    has_vbqppl = df_dieu["vbqppl"].fillna("").astype(bool)
+    vbqppl_line = "VBQPPL: " + df_dieu["vbqppl"].fillna("") + "\n"
+    df_dieu["full_context"] = (
+        base + vbqppl_line.where(has_vbqppl, "") + df_dieu["noidung"].fillna("")
     )
 
     output_cols = [

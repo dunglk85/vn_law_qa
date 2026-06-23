@@ -5,12 +5,9 @@ to metrics/quality.json. This is a DVC metric — it becomes a
 tracked signal for pipeline health over time.
 """
 import json
-import sys
-from pathlib import Path
 
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 import src.settings as _settings
 from src.settings import setup_logging
 

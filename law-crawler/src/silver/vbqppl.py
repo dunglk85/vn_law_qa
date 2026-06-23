@@ -4,13 +4,10 @@ Reads raw VBQPPL HTML from bronze, parses into structured
 chapters (Chương) and articles (Điều), writes to silver.
 """
 import re
-import sys
-from pathlib import Path
 
 import pandas as pd
 from bs4 import BeautifulSoup
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.settings import BRONZE_VBQPPL, SILVER_VBQPPL, setup_logging
 
 logger = setup_logging(__name__)

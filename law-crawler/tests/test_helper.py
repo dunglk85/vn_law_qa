@@ -4,7 +4,7 @@ import pytest
 
 def test_convert_roman_to_num_basic():
     """Convert basic Roman numerals."""
-    from helper import convert_roman_to_num
+    from src.helper import convert_roman_to_num
 
     assert convert_roman_to_num("I") == 1
     assert convert_roman_to_num("V") == 5
@@ -16,7 +16,7 @@ def test_convert_roman_to_num_basic():
 
 def test_convert_roman_to_num_compound():
     """Convert compound Roman numerals."""
-    from helper import convert_roman_to_num
+    from src.helper import convert_roman_to_num
 
     assert convert_roman_to_num("IV") == 4
     assert convert_roman_to_num("IX") == 9
@@ -27,7 +27,7 @@ def test_convert_roman_to_num_compound():
 
 def test_convert_roman_to_num_vietnamese():
     """Convert Vietnamese index characters not in Roman numeral set."""
-    from helper import convert_roman_to_num
+    from src.helper import convert_roman_to_num
 
     assert convert_roman_to_num("A") == 1
     assert convert_roman_to_num("B") == 2
@@ -36,7 +36,7 @@ def test_convert_roman_to_num_vietnamese():
 
 def test_convert_roman_to_num_case_insensitive():
     """Roman conversion should be case insensitive."""
-    from helper import convert_roman_to_num
+    from src.helper import convert_roman_to_num
 
     assert convert_roman_to_num("iv") == 4
     assert convert_roman_to_num("ix") == 9
@@ -44,7 +44,7 @@ def test_convert_roman_to_num_case_insensitive():
 
 def test_extract_input_found():
     """Extract content inside parentheses."""
-    from helper import extract_input
+    from src.helper import extract_input
 
     assert extract_input("abc(123)def") == "123"
     assert extract_input("foo('bar')") == "'bar'"
@@ -53,7 +53,7 @@ def test_extract_input_found():
 
 def test_extract_input_not_found():
     """Return None when no parentheses found."""
-    from helper import extract_input
+    from src.helper import extract_input
 
     assert extract_input("no parentheses here") is None
     assert extract_input("") is None
@@ -62,31 +62,29 @@ def test_extract_input_not_found():
 
 def test_extract_input_nested():
     """Extract from first parentheses only."""
-    from helper import extract_input
+    from src.helper import extract_input
 
     assert extract_input("(a(b)c)") == "a(b"
 
 
 def test_convert_roman_to_num_unknown_char_raises():
     """I1 fix: characters outside both Roman and Vietnamese index sets must raise ValueError."""
-    from helper import convert_roman_to_num
-    import pytest
+    from src.helper import convert_roman_to_num
 
     with pytest.raises(ValueError, match="Unknown character"):
-        convert_roman_to_num("K")  # K is not a Roman numeral and not in A-J
+        convert_roman_to_num("K")
 
     with pytest.raises(ValueError, match="Unknown character"):
-        convert_roman_to_num("Z")  # Z is outside the A-J alphabet range
+        convert_roman_to_num("Z")
 
     with pytest.raises(ValueError, match="Unknown character"):
-        convert_roman_to_num("1")  # digits should also be rejected
+        convert_roman_to_num("1")
 
 
 def test_convert_roman_to_num_alphabet_boundary():
     """I1 fix: J (10th letter) is the last supported Vietnamese index."""
-    from helper import convert_roman_to_num
-    import pytest
+    from src.helper import convert_roman_to_num
 
-    assert convert_roman_to_num("J") == 10   # last valid alphabet entry
+    assert convert_roman_to_num("J") == 10
     with pytest.raises(ValueError):
-        convert_roman_to_num("K")            # first invalid one
+        convert_roman_to_num("K")

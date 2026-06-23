@@ -3,12 +3,8 @@
 Reads raw Parquet from bronze, applies cleaning rules and schema
 enforcement, then writes validated data to silver.
 """
-import sys
-from pathlib import Path
-
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.settings import BRONZE_PHAP_DIEN, SILVER_PHAP_DIEN, setup_logging
 
 logger = setup_logging(__name__)

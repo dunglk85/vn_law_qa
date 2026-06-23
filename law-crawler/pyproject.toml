@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy._Backend"
+
+[project]
+name = "law-crawler"
+version = "0.1.0"
+description = "Medallion-architecture ETL pipeline for Vietnamese legal documents"
+requires-python = ">=3.10"
+dependencies = [
+    "beautifulsoup4>=4.12",
+    "pandas>=2.0",
+    "pyarrow>=10",
+    "pyyaml>=6.0",
+    "requests>=2.31",
+    "pydantic>=2.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["src", "src.*"]

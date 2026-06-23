@@ -5,15 +5,12 @@ raw structured data to Parquet files. No cleaning or validation —
 that happens in the Silver layer.
 """
 import json
-import sys
 import uuid
-from pathlib import Path
 
 import pandas as pd
 from bs4 import BeautifulSoup
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from helper import convert_roman_to_num, extract_input
+from src.helper import convert_roman_to_num, extract_input
 from src.settings import (
     BRONZE_PHAP_DIEN,
     CHECKPOINT,

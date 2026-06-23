@@ -5,7 +5,7 @@ stages:
     deps:
       - phap-dien
       - src/bronze/phap_dien.py
-      - helper.py
+      - src/helper.py
     params:
       - checkpoint
     outs:
