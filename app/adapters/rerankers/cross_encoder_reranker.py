@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from langchain.retrievers.document_compressors import CrossEncoderReranker
+from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain_core.documents.compressor import BaseDocumentCompressor
 
