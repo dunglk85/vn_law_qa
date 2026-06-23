@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.settings import (
     BRONZE_PHAP_DIEN,
     BRONZE_VBQPPL,
+    CRAWL_DELAY,
     MAX_RETRIES,
     REQUEST_TIMEOUT,
     SAVE_EVERY,
@@ -83,27 +84,43 @@ def main() -> None:
     item_ids = links.apply(get_item_id).dropna().drop_duplicates()
     logger.info("Found %d unique ItemIDs to crawl", len(item_ids))
 
-    collected: list[dict] = []
+    # ── C1 fix: resume from existing parquet ─────────────────────────────────
+    # Load any previously crawled documents so a crashed run can continue
+    # without re-fetching IDs that were already successfully retrieved.
+    existing_path = BRONZE_VBQPPL / "vbpl.parquet"
+    if existing_path.exists():
+        existing_df = pd.read_parquet(existing_path)
+        collected: list[dict] = existing_df.to_dict("records")
+        already_fetched: set[str] = set(existing_df["id"].astype(str))
+        logger.info("Resuming — %d documents already in parquet, skipping those IDs", len(collected))
+    else:
+        collected = []
+        already_fetched = set()
+    # ─────────────────────────────────────────────────────────────────────────
+
+    new_count = 0
     for i, item_id in enumerate(item_ids, 1):
+        if str(item_id) in already_fetched:
+            logger.debug("[%d/%d] Skipping already-fetched ItemID %s", i, len(item_ids), item_id)
+            continue
+
         logger.info("[%d/%d] Fetching ItemID %s", i, len(item_ids), item_id)
         content = fetch_document(item_id)
         if content:
             collected.append({"id": item_id, "noidung": content})
+            already_fetched.add(str(item_id))
+            new_count += 1
 
-        if i % SAVE_EVERY == 0 and collected:
-            pd.DataFrame(collected).to_parquet(
-                BRONZE_VBQPPL / "vbpl.parquet", index=False,
-            )
-            logger.info("Saved checkpoint at %d documents", len(collected))
+        if new_count > 0 and new_count % SAVE_EVERY == 0:
+            pd.DataFrame(collected).to_parquet(existing_path, index=False)
+            logger.info("Saved checkpoint at %d total documents (%d new)", len(collected), new_count)
 
-        time.sleep(0.5)
+        time.sleep(CRAWL_DELAY)  # I4 fix: configurable via LAW_CRAWL_DELAY env / params.yaml crawl_delay
 
-    if collected:
-        pd.DataFrame(collected).to_parquet(
-            BRONZE_VBQPPL / "vbpl.parquet", index=False,
-        )
+    if new_count > 0 and collected:
+        pd.DataFrame(collected).to_parquet(existing_path, index=False)
 
-    logger.info("Bronze VBQPPL done: %d documents crawled", len(collected))
+    logger.info("Bronze VBQPPL done: %d new documents crawled (%d total)", new_count, len(collected))
 
 
 if __name__ == "__main__":

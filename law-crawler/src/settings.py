@@ -47,3 +47,7 @@ CHECKPOINT = os.getenv("LAW_CHECKPOINT", _params.get("checkpoint", ""))
 # Chunk settings for RAG
 CHUNK_SIZE = int(os.getenv("LAW_CHUNK_SIZE", _params.get("chunk_size", 1000)))
 CHUNK_OVERLAP = int(os.getenv("LAW_CHUNK_OVERLAP", _params.get("chunk_overlap", 200)))
+
+# Polite crawl delay between requests (seconds)
+# Configurable to respect server rate limits without banning the crawler.
+CRAWL_DELAY = float(os.getenv("LAW_CRAWL_DELAY", _params.get("crawl_delay", 0.5)))

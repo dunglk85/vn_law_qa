@@ -20,6 +20,16 @@ _ARTICLE_RE = re.compile(r"^Điều\b", re.IGNORECASE)
 
 
 def split_document(id_vb: str, contents: str, start_id: int) -> tuple[list[dict], int]:
+    """Split one full-text VBQPPL document into chapters and articles.
+
+    State machine (M5 note):
+      control == 0  — before the first recognised heading (skip lines)
+      control == 1  — inside a chapter heading (Chương ...)
+      control == 2  — inside an article body  (Điều ...)
+
+    chi_muc_cha is None for chapters; for articles it holds the id of
+    the enclosing chapter, enabling parent–child reconstruction.
+    """
     try:
         soup = BeautifulSoup(contents, "html.parser").find("div", id="toanvancontent")
         if soup is None:
@@ -33,11 +43,12 @@ def split_document(id_vb: str, contents: str, start_id: int) -> tuple[list[dict]
     chi_muc: list[dict] = []
     current_id = start_id
     id_chuong = None
-    control = 0
+    control = 0   # 0=preamble, 1=chapter, 2=article
     text = ""
 
     def flush(current_text: str, old_control: int) -> None:
-        nonlocal current_id
+        """Append the buffered text as one chi_muc record and advance current_id."""
+        nonlocal current_id  # M5: intentional closure mutation — current_id is the running id counter
         if not current_text.strip():
             return
         chi_muc.append({
@@ -81,13 +92,12 @@ def main() -> None:
     df = pd.read_parquet(vbpl_path)
     logger.info("Loaded %d documents from bronze", len(df))
 
-    existing_path = SILVER_VBQPPL / "vb_chimuc.parquet"
-    if existing_path.exists():
-        existing = pd.read_parquet(existing_path)
-        current_id = int(existing["id"].max()) + 1
-    else:
-        current_id = 1
-    logger.info("Starting split at id=%d", current_id)
+    # I2 fix: always start at id=1 and fully reprocess.
+    # Idempotency guarantee: same bronze input → same silver IDs every run.
+    # Do NOT resume from max(id)+1 — that makes IDs non-deterministic across
+    # re-runs and breaks any system that stored a reference to an old id.
+    current_id = 1
+    logger.info("Starting split at id=1 (full reprocess — idempotent)")
 
     all_chi_muc: list[dict] = []
     for j in range(len(df)):

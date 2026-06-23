@@ -65,3 +65,28 @@ def test_extract_input_nested():
     from helper import extract_input
 
     assert extract_input("(a(b)c)") == "a(b"
+
+
+def test_convert_roman_to_num_unknown_char_raises():
+    """I1 fix: characters outside both Roman and Vietnamese index sets must raise ValueError."""
+    from helper import convert_roman_to_num
+    import pytest
+
+    with pytest.raises(ValueError, match="Unknown character"):
+        convert_roman_to_num("K")  # K is not a Roman numeral and not in A-J
+
+    with pytest.raises(ValueError, match="Unknown character"):
+        convert_roman_to_num("Z")  # Z is outside the A-J alphabet range
+
+    with pytest.raises(ValueError, match="Unknown character"):
+        convert_roman_to_num("1")  # digits should also be rejected
+
+
+def test_convert_roman_to_num_alphabet_boundary():
+    """I1 fix: J (10th letter) is the last supported Vietnamese index."""
+    from helper import convert_roman_to_num
+    import pytest
+
+    assert convert_roman_to_num("J") == 10   # last valid alphabet entry
+    with pytest.raises(ValueError):
+        convert_roman_to_num("K")            # first invalid one

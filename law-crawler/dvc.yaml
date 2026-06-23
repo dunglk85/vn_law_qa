@@ -16,6 +16,8 @@ stages:
     deps:
       - data/bronze/phap_dien/dieu.parquet
       - src/bronze/vbqppl.py
+    params:
+      - crawl_delay
     outs:
       - data/bronze/vbqppl
 

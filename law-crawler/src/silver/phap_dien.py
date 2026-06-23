@@ -13,6 +13,15 @@ from src.settings import BRONZE_PHAP_DIEN, SILVER_PHAP_DIEN, setup_logging
 
 logger = setup_logging(__name__)
 
+# Canonical column names produced by the bronze layer.
+# If the bronze schema ever changes, these assertions will fail fast
+# at the top of the relevant clean_* function rather than silently
+# using a wrong column name (M1 fix — removes the _id suffix heuristic).
+_CHUONG_DEMUC_COL = "demuc_id"
+_DIEU_FK_COLS = ["demuc_id", "chuong_id"]
+_TABLE_DIEU_COL = "dieu_id"
+_FILE_DIEU_COL = "dieu_id"
+
 
 def _read_bronze(name: str) -> pd.DataFrame:
     path = BRONZE_PHAP_DIEN / f"{name}.parquet"
@@ -47,9 +56,13 @@ def clean_chuong(df: pd.DataFrame) -> pd.DataFrame:
     df["ten"] = df["ten"].str.strip()
     df["chimuc"] = df["chimuc"].str.strip()
     df["stt"] = pd.to_numeric(df["stt"], errors="coerce").fillna(0).astype(int)
-    coldemuc = "demuc_id" if "demuc_id" in df.columns else "demuc_id_id"
-    if coldemuc in df.columns:
-        df[coldemuc] = df[coldemuc].str.strip()
+    # M1 fix: assert canonical column name rather than silently falling back
+    if _CHUONG_DEMUC_COL not in df.columns:
+        raise KeyError(
+            f"Expected column {_CHUONG_DEMUC_COL!r} in chuong bronze data; "
+            f"found: {list(df.columns)}"
+        )
+    df[_CHUONG_DEMUC_COL] = df[_CHUONG_DEMUC_COL].str.strip()
     return df.reset_index(drop=True)
 
 
@@ -62,10 +75,14 @@ def clean_dieu(df: pd.DataFrame) -> pd.DataFrame:
     df["chimuc"] = pd.to_numeric(df["chimuc"], errors="coerce").fillna(0).astype(int)
     df["stt"] = pd.to_numeric(df["stt"], errors="coerce").fillna(0).astype(int)
     df["vbqppl"] = df["vbqppl"].fillna("").str.strip()
-    for col in ["demuc_id", "chuong_id"]:
-        coldb = col if col in df.columns else f"{col}_id"
-        if coldb in df.columns:
-            df[coldb] = df[coldb].fillna("").str.strip()
+    # M1 fix: assert canonical FK column names rather than silently falling back
+    for col in _DIEU_FK_COLS:
+        if col not in df.columns:
+            raise KeyError(
+                f"Expected column {col!r} in dieu bronze data; "
+                f"found: {list(df.columns)}"
+            )
+        df[col] = df[col].fillna("").str.strip()
     return df.reset_index(drop=True)
 
 
@@ -74,9 +91,13 @@ def clean_tables(df: pd.DataFrame) -> pd.DataFrame:
         return df
     df = df.drop_duplicates()
     df["html"] = df["html"].str.strip()
-    coldieu = "dieu_id" if "dieu_id" in df.columns else "dieu_id_id"
-    if coldieu in df.columns:
-        df[coldieu] = df[coldieu].str.strip()
+    # M1 fix: assert canonical column name
+    if _TABLE_DIEU_COL not in df.columns:
+        raise KeyError(
+            f"Expected column {_TABLE_DIEU_COL!r} in tables bronze data; "
+            f"found: {list(df.columns)}"
+        )
+    df[_TABLE_DIEU_COL] = df[_TABLE_DIEU_COL].str.strip()
     return df.reset_index(drop=True)
 
 
@@ -86,9 +107,13 @@ def clean_files(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop_duplicates()
     df["link"] = df["link"].str.strip()
     df["path"] = df["path"].fillna("")
-    coldieu = "dieu_id" if "dieu_id" in df.columns else "dieu_id_id"
-    if coldieu in df.columns:
-        df[coldieu] = df[coldieu].str.strip()
+    # M1 fix: assert canonical column name
+    if _FILE_DIEU_COL not in df.columns:
+        raise KeyError(
+            f"Expected column {_FILE_DIEU_COL!r} in files bronze data; "
+            f"found: {list(df.columns)}"
+        )
+    df[_FILE_DIEU_COL] = df[_FILE_DIEU_COL].str.strip()
     return df.reset_index(drop=True)
 
 

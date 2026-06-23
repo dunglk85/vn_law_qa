@@ -1,74 +1,77 @@
 # Law Crawler — Vietnamese Law Data Ingestion
 
-Standalone batch tool for crawling and structuring Vietnamese legal documents into MySQL.
-
-## What it does
-
-| Crawler | Source | Output | Description |
-|---------|--------|--------|-------------|
-| `main.py` | `phap-dien/` HTML files & JSON | MySQL (peewee ORM) | Pháp Điển Việt Nam — chapters, articles, tables, cross-references |
-| `document-crawler/main.py` | `vbpl.vn` (web) | MySQL (SQLAlchemy) | VBQPPL full-text documents linked from articles |
-| `document-crawler/split_document.py` | `vbpl` table | `vb_chimuc` table | Splits full-text HTML into chapters/articles |
+Standalone batch pipeline for crawling and structuring Vietnamese legal documents
+into Parquet files ready for RAG embedding.
 
 ## Architecture
 
-**Independent of the main RAG application.** The main app uses PostgreSQL + pgvector for vector search. This crawler uses MySQL for structured law data. They share no data store, no schema, and no runtime. Data must be exported/transformed if needed by the main app.
-
-## Pipeline dependency
+A **medallion pipeline** (Bronze → Silver → Gold) managed by [DVC](https://dvc.org/).
+Independent of the main RAG application — produces Parquet files consumed by the seeder.
 
 ```
-crawl_phap_dien → crawl_vbqppl → split_documents
+Bronze                     Silver                      Gold
+──────────────────────     ────────────────────────    ──────────────────────────
+phap_dien.py               phap_dien.py                documents.py
+  HTML/JSON → Parquet  →     Clean & validate       →    Denormalize + enrich
+                                                         (full_context field)
+vbqppl.py                  vbqppl.py                   chunks.py
+  vbpl.vn web crawl    →     Split chapters/articles →   Chunk for embedding
+                           quality.py
+                             DVC metric report
 ```
 
-- `crawl_phap_dien` must run first (creates `pddieu` table with links)
-- `crawl_vbqppl` queries `pddieu` for `vbqppl_link` values
-- `split_documents` queries `vbpl` for full-text content
-
-## Usage
-
-### Manual
+## Quick Start
 
 ```bash
-# Start MySQL
-docker compose up -d
-
 # Install dependencies
 pip install -r requirements.txt
 
-# Run法Điển crawler (requires phap-dien/ data files)
-python main.py
+# Run full pipeline
+python src/pipeline.py
 
-# Run VBQPPL crawler
-python document-crawler/main.py
+# Run only a specific layer
+python src/pipeline.py --stage bronze   # or silver / gold
 
-# Run document splitter
-python document-crawler/split_document.py
+# Run from a layer onward
+python src/pipeline.py --from silver
+
+# With DVC (caching + incremental runs)
+dvc repro
 ```
 
-### GitHub Actions (scheduled)
+## Resuming an interrupted crawl
 
-The workflow `.github/workflows/law-crawler.yml` runs weekly:
+The VBQPPL web crawl (`bronze/vbqppl.py`) is crash-resumable: on startup it reads
+any existing `data/bronze/vbqppl/vbpl.parquet` and skips already-fetched item IDs.
 
-- **Schedule:** Sunday 02:00 UTC
-- **Manual trigger:** Actions → Run workflow (optionally skip法Điển crawl)
-- **MySQL:** Ephemeral service container (data in artifact)
-- **Artifact:** `law-data-{run_id}` — SQL dump, retained 30 days
-
-To load the crawled data into your own MySQL:
+The Pháp Điển HTML ingest (`bronze/phap_dien.py`) supports file-level checkpointing
+via the `LAW_CHECKPOINT` env var (or `checkpoint` in `params.yaml`):
 
 ```bash
-# Download the artifact from GitHub Actions
-# Then import:
-mysql -u root -p law < law_dump.sql
+LAW_CHECKPOINT=0012.html python -m src.bronze.phap_dien
 ```
 
 ## Configuration
 
-| Env var | Default | Purpose |
-|---------|---------|---------|
-| `LAW_DB_HOST` | `localhost` | MySQL host |
-| `LAW_DB_PORT` | `3306` | MySQL port |
-| `LAW_DB_USER` | `root` | MySQL user |
-| `LAW_DB_PASSWORD` | *(empty)* | MySQL password |
-| `LAW_DB_NAME` | `law` | MySQL database |
-| `LAW_CHECKPOINT` | *(none)* | Resume from specific HTML file |
+| Env var | `params.yaml` key | Default | Purpose |
+|---------|-------------------|---------|---------|
+| `LAW_CHECKPOINT` | `checkpoint` | `""` | Resume Pháp Điển ingest from this HTML filename |
+| `LAW_CHUNK_SIZE` | `chunk_size` | `1000` | Characters per RAG chunk |
+| `LAW_CHUNK_OVERLAP` | `chunk_overlap` | `200` | Overlap between adjacent chunks |
+| `LAW_CRAWL_DELAY` | `crawl_delay` | `0.5` | Seconds between VBQPPL HTTP requests |
+
+## Pipeline outputs
+
+| File | Description |
+|------|-------------|
+| `data/gold/law_documents.parquet` | Denormalized articles with hierarchical context |
+| `data/gold/law_document_chunks.parquet` | Chunked Pháp Điển articles for embedding |
+| `data/gold/vbqppl_documents.parquet` | VBQPPL chapters/articles |
+| `data/gold/vbqppl_chunks.parquet` | Chunked VBQPPL records for embedding |
+| `metrics/quality.json` | DVC-tracked data quality report |
+
+## Running tests
+
+```bash
+pytest tests/ -v
+```

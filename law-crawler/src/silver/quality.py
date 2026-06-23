@@ -106,7 +106,8 @@ def main() -> None:
     issues = sum(
         1 for k, v in metrics.items()
         if isinstance(v, (int, float)) and v > 0
-        and any(tag in k for tag in ["nulls", "empty", "orphan"])
+        # M4 fix: include all known quality-signal tag prefixes so no metric is silently ignored
+        and any(tag in k for tag in ["nulls", "empty", "orphan", "no_vbqppl"])
     )
     if issues:
         logger.warning("Found %d potential quality issues — check metrics/quality.json", issues)

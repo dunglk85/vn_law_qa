@@ -109,6 +109,35 @@ class TestSilverCleaning:
         assert result["valid_refs"] == 1
         assert result["orphan_refs"] == 1
 
+    def test_clean_chuong_missing_column_raises(self):
+        """M1 fix: clean_chuong must raise KeyError when demuc_id column is absent."""
+        from src.silver.phap_dien import clean_chuong
+        df = pd.DataFrame([{
+            "mapc": "c1", "ten": "Chapter 1", "chimuc": "I", "stt": 1,
+            # deliberately omit demuc_id
+        }])
+        with pytest.raises(KeyError, match="demuc_id"):
+            clean_chuong(df)
+
+    def test_clean_dieu_missing_column_raises(self):
+        """M1 fix: clean_dieu must raise KeyError when a FK column is absent."""
+        from src.silver.phap_dien import clean_dieu
+        df = pd.DataFrame([{
+            "mapc": "d1", "ten": "Art 1", "noidung": "body",
+            "chimuc": "1", "stt": "0", "vbqppl": None,
+            "demuc_id": "dm1",
+            # deliberately omit chuong_id
+        }])
+        with pytest.raises(KeyError, match="chuong_id"):
+            clean_dieu(df)
+
+    def test_clean_tables_missing_column_raises(self):
+        """M1 fix: clean_tables must raise KeyError when dieu_id column is absent."""
+        from src.silver.phap_dien import clean_tables
+        df = pd.DataFrame([{"html": "<table></table>"}])  # no dieu_id
+        with pytest.raises(KeyError, match="dieu_id"):
+            clean_tables(df)
+
 
 class TestQuality:
     def test_quality_output_json(self):
@@ -138,6 +167,41 @@ class TestQuality:
 
             _settings.SILVER_PHAP_DIEN = original_silver
 
+    def test_no_vbqppl_link_counted_as_quality_issue(self, tmp_path, monkeypatch):
+        """M4 fix: pd_dieu_no_vbqppl_link > 0 must appear in the quality issue count."""
+        import importlib
+        import src.settings as _settings
+        import src.silver.quality as qmod
+
+        monkeypatch.setattr(_settings, "SILVER_PHAP_DIEN", tmp_path)
+        monkeypatch.setattr(_settings, "SILVER_VBQPPL", tmp_path)
+        monkeypatch.setattr(_settings, "METRICS", tmp_path)
+
+        # dieu with no vbqppl_link (all None)
+        pd.DataFrame({"id": ["1"], "ten": ["x"], "stt": [1]}).to_parquet(tmp_path / "chude.parquet")
+        pd.DataFrame({"id": ["dm1"], "ten": ["x"], "stt": [1], "chude_id": ["1"]}).to_parquet(tmp_path / "demuc.parquet")
+        pd.DataFrame({"mapc": ["ch1"], "ten": ["x"], "chimuc": ["I"], "stt": [1], "demuc_id": ["dm1"]}).to_parquet(tmp_path / "chuong.parquet")
+        pd.DataFrame({
+            "mapc": ["a"], "ten": ["Art"], "noidung": ["text"],
+            "chimuc": [1], "stt": [0], "vbqppl": [""], "vbqppl_link": [None],  # <-- no link
+            "chuong_id": ["ch1"], "demuc_id": ["dm1"],
+        }).to_parquet(tmp_path / "dieu.parquet")
+        pd.DataFrame({"dieu_id1": [], "dieu_id2": []}).to_parquet(tmp_path / "muclienquan.parquet")
+        pd.DataFrame().to_parquet(tmp_path / "table.parquet")
+        pd.DataFrame().to_parquet(tmp_path / "file.parquet")
+
+        importlib.reload(qmod)
+        metrics = qmod.check_phap_dien()
+        assert metrics["pd_dieu_no_vbqppl_link"] == 1
+
+        # Verify the issue counter now catches the no_vbqppl tag
+        issues = sum(
+            1 for k, v in metrics.items()
+            if isinstance(v, (int, float)) and v > 0
+            and any(tag in k for tag in ["nulls", "empty", "orphan", "no_vbqppl"])
+        )
+        assert issues >= 1, "pd_dieu_no_vbqppl_link should contribute to quality issue count"
+
 
 class TestBronzeParse:
     def test_extract_item_id(self):
@@ -145,6 +209,69 @@ class TestBronzeParse:
         assert get_item_id(None) is None
         assert get_item_id("https://vbpl.vn/Pages/vbpq-toanvan.aspx?ItemID=123#tab") == "123"
         assert get_item_id("no match") is None
+
+    def test_vbqppl_resume_skips_existing_ids(self, tmp_path, monkeypatch):
+        """C1 fix: already-fetched IDs in parquet must be skipped, not re-crawled."""
+        import src.settings as _s
+        from unittest.mock import patch, MagicMock
+
+        # Seed parquet with one already-fetched document
+        existing = pd.DataFrame([{"id": "111", "noidung": "<div>old</div>"}])
+        parquet_path = tmp_path / "vbpl.parquet"
+        existing.to_parquet(parquet_path, index=False)
+
+        monkeypatch.setattr(_s, "BRONZE_VBQPPL", tmp_path)
+
+        # Provide dieu.parquet with two item IDs: one already fetched, one new
+        phap_dien_dir = tmp_path / "phap_dien"
+        phap_dien_dir.mkdir()
+        monkeypatch.setattr(_s, "BRONZE_PHAP_DIEN", phap_dien_dir)
+        dieu_df = pd.DataFrame({
+            "vbqppl_link": [
+                "https://vbpl.vn/?ItemID=111",  # already in parquet
+                "https://vbpl.vn/?ItemID=222",  # new
+            ]
+        })
+        dieu_df.to_parquet(phap_dien_dir / "dieu.parquet", index=False)
+
+        # Patch requests.get so fetch_document returns a synthetic HTML doc for ID 222
+        fake_html = (
+            '<div class="fulltext">'
+            "  <div>wrapper</div>"
+            '  <div id="toanvancontent"><p>content</p></div>'
+            "</div>"
+        )
+        mock_response = MagicMock()
+        mock_response.content = fake_html.encode()
+        mock_response.raise_for_status = MagicMock()
+
+        fetched_urls: list[str] = []
+
+        def fake_get(url, **kwargs):
+            fetched_urls.append(url)
+            return mock_response
+
+        with patch("requests.get", side_effect=fake_get), patch("time.sleep"):
+            import importlib, src.bronze.vbqppl as m
+            importlib.reload(m)
+            m.main()
+
+        # Only the new ID (222) should have triggered an HTTP request
+        assert any("222" in u for u in fetched_urls), f"Expected request for 222, got {fetched_urls}"
+        assert not any("111" in u for u in fetched_urls), f"ID 111 should have been skipped, got {fetched_urls}"
+        # Both records should be in the output parquet
+        result = pd.read_parquet(parquet_path)
+        assert set(result["id"].astype(str)) == {"111", "222"}
+
+
+    def test_phap_dien_href_absent_returns_none(self):
+        """I3 fix: <a> without href must return None, not raise KeyError."""
+        from bs4 import BeautifulSoup
+        # Tag has no href attribute
+        html = "<p><a>no href here</a></p>"
+        soup = BeautifulSoup(html, "html.parser")
+        tag = soup.select("a")[0]
+        assert tag.get("href") is None
 
 
 class TestPipeline:
@@ -154,3 +281,61 @@ class TestPipeline:
         assert "ingest_phap_dien" in [s[0] for s in STAGES["bronze"]]
         assert "quality_checks" in [s[0] for s in STAGES["silver"]]
         assert "chunk_documents" in [s[0] for s in STAGES["gold"]]
+
+
+class TestSilverVBQPPLIdempotency:
+    def test_split_produces_same_ids_on_rerun(self, tmp_path, monkeypatch):
+        """I2 fix: two consecutive runs on the same bronze input must produce identical IDs."""
+        import importlib
+        import src.settings as _s
+        import src.silver.vbqppl as m
+
+        # Create a minimal bronze vbpl.parquet
+        fake_html = (
+            '<div class="fulltext">'
+            '<div id="toanvancontent">'
+            "<p>Chương I header</p>"
+            "<p>Điều 1 first article</p>"
+            "<p>Điều 2 second article</p>"
+            "</div></div>"
+        )
+        bronze_dir = tmp_path / "vbqppl"
+        bronze_dir.mkdir(parents=True)
+        pd.DataFrame([{"id": "99", "noidung": fake_html}]).to_parquet(
+            bronze_dir / "vbpl.parquet", index=False
+        )
+
+        silver_dir = tmp_path / "silver_vbqppl"
+        silver_dir.mkdir(parents=True)
+
+        monkeypatch.setattr(_s, "BRONZE_VBQPPL", bronze_dir)
+        monkeypatch.setattr(_s, "SILVER_VBQPPL", silver_dir)
+
+        # First run
+        importlib.reload(m)
+        m.main()
+        run1 = pd.read_parquet(silver_dir / "vb_chimuc.parquet").sort_values("id").reset_index(drop=True)
+
+        # Second run — must produce identical ids
+        importlib.reload(m)
+        m.main()
+        run2 = pd.read_parquet(silver_dir / "vb_chimuc.parquet").sort_values("id").reset_index(drop=True)
+
+        pd.testing.assert_frame_equal(run1, run2, check_like=False)
+
+
+class TestSettings:
+    def test_crawl_delay_default(self):
+        """I4 fix: CRAWL_DELAY should default to 0.5 when not configured."""
+        import importlib, src.settings as s
+        importlib.reload(s)
+        assert s.CRAWL_DELAY == 0.5
+
+    def test_crawl_delay_from_env(self, monkeypatch):
+        """I4 fix: LAW_CRAWL_DELAY env var overrides the default."""
+        monkeypatch.setenv("LAW_CRAWL_DELAY", "2.0")
+        import importlib, src.settings as s
+        importlib.reload(s)
+        assert s.CRAWL_DELAY == 2.0
+        monkeypatch.delenv("LAW_CRAWL_DELAY", raising=False)
+        importlib.reload(s)  # restore default for other tests
