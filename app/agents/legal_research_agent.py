@@ -120,7 +120,8 @@ class LegalResearchAgent:
                     source = metadata.get("source", "unknown")
                     content_hash = hashlib.md5(doc.page_content.encode()).hexdigest()
                     chunk_id = metadata.get("chunk_id") or f"{source}::{content_hash}"
-                    relevance_score = float(metadata.get("score", -1.0) or -1.0)
+                    score_val = metadata.get("score")
+                    relevance_score = float(score_val) if score_val is not None else -1.0
                     results.append(
                         Article(
                             id=chunk_id,

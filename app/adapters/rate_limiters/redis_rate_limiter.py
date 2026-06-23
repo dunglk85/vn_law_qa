@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import time
 
 import redis.asyncio as aioredis
 
 from app.ports.rate_limiter import RateLimiterPort
+
+logger = logging.getLogger(__name__)
 
 
 class RedisRateLimiterAdapter(RateLimiterPort):
@@ -17,7 +20,11 @@ class RedisRateLimiterAdapter(RateLimiterPort):
         now = time.time()
         window = int(now // self._window_seconds)
         key = f"ratelimit:{client_ip}:{window}"
-        count = await self._redis.incr(key)
-        if count == 1:
-            await self._redis.expire(key, int(self._window_seconds))
-        return count <= self._max_requests
+        try:
+            count = await self._redis.incr(key)
+            if count == 1:
+                await self._redis.expire(key, int(self._window_seconds))
+            return count <= self._max_requests
+        except Exception as exc:
+            logger.warning("Redis rate limiter check failed, allowing request: %s", exc)
+            return True

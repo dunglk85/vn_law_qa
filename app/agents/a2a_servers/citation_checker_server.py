@@ -7,6 +7,7 @@ Requires env vars: VECTOR_STORE_TYPE, DATABASE_URL, LLM_TYPE, LLM_MODEL, etc.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -23,6 +24,7 @@ _embed = None
 _vstore = None
 _llm_inst = None
 _citation = None
+_get_agent_lock = asyncio.Lock()
 
 logger = logging.getLogger(__name__)
 
@@ -76,15 +78,17 @@ async def health():
 # ---------------------------------------------------------------------------
 
 
-def _get_agent():
+async def _get_agent():
     global _embed, _vstore, _llm_inst, _citation
     if _citation is None:
-        _embed = create_embeddings()
-        _vstore = create_vector_store(embeddings=_embed)
-        _llm_inst = create_llm()
-        from app.agents.citation_checker_agent import CitationCheckerAgent
+        async with _get_agent_lock:
+            if _citation is None:
+                _embed = create_embeddings()
+                _vstore = create_vector_store(embeddings=_embed)
+                _llm_inst = create_llm()
+                from app.agents.citation_checker_agent import CitationCheckerAgent
 
-        _citation = CitationCheckerAgent(_vstore, _llm_inst.get_chat_model())
+                _citation = CitationCheckerAgent(_vstore, _llm_inst.get_chat_model())
     return _citation
 
 
@@ -143,7 +147,8 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
         })}
 
         try:
-            citations = await _get_agent().run(articles, query)
+            agent = await _get_agent()
+            citations = await agent.run(articles, query)
             citations_dicts = [c.to_dict() for c in citations]
 
             yield {"event": "task_status", "data": json.dumps({
@@ -183,7 +188,10 @@ async def _error_stream(task_id: str, message: str):
 
 @app.post("/", include_in_schema=False)
 async def jsonrpc_handler(request: Request):
-    body = await request.json()
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse(status_code=400, content={"error": "Invalid JSON body"})
     jsonrpc = body.get("jsonrpc", "2.0")
     method = body.get("method", "")
     params = body.get("params", {})
@@ -206,6 +214,9 @@ async def jsonrpc_handler(request: Request):
 @app.post("/sendMessage", include_in_schema=False)
 async def send_message_direct(request: Request):
     """Convenience endpoint for non-JSON-RPC callers."""
-    body = await request.json()
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse(status_code=400, content={"error": "Invalid JSON body"})
     params = {"id": f"task-{uuid.uuid4().hex[:12]}", "message": body.get("message", {})}
     return await _handle_send_message(params)

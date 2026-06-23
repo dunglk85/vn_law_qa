@@ -9,7 +9,6 @@ logger = logging.getLogger(__name__)
 _NON_RETRYABLE = (
     ValueError,
     TypeError,
-    AttributeError,
     KeyError,
     NotImplementedError,
 )

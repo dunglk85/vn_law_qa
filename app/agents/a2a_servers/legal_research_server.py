@@ -7,6 +7,7 @@ Requires env vars: VECTOR_STORE_TYPE, DATABASE_URL, LLM_TYPE, LLM_MODEL, etc.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -75,18 +76,21 @@ _vstore = None
 _ret = None
 _llm_inst = None
 _research = None
+_get_agent_lock = asyncio.Lock()
 
 
-def _get_agent():
+async def _get_agent():
     global _embed, _vstore, _ret, _llm_inst, _research
     if _research is None:
-        _embed = create_embeddings()
-        _vstore = create_vector_store(embeddings=_embed)
-        _ret = create_retriever(vector_store=_vstore)
-        _llm_inst = create_llm()
-        from app.agents.legal_research_agent import LegalResearchAgent
+        async with _get_agent_lock:
+            if _research is None:
+                _embed = create_embeddings()
+                _vstore = create_vector_store(embeddings=_embed)
+                _ret = create_retriever(vector_store=_vstore)
+                _llm_inst = create_llm()
+                from app.agents.legal_research_agent import LegalResearchAgent
 
-        _research = LegalResearchAgent(_ret, _llm_inst.get_chat_model())
+                _research = LegalResearchAgent(_ret, _llm_inst.get_chat_model())
     return _research
 
 
@@ -119,7 +123,8 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
         })}
 
         try:
-            articles = await _get_agent().run(query)
+            agent = await _get_agent()
+            articles = await agent.run(query)
             articles_dicts = [a.to_dict() if hasattr(a, "to_dict") else _article_to_dict(a) for a in articles]
 
             yield {"event": "task_status", "data": json.dumps({
@@ -168,7 +173,10 @@ def _article_to_dict(a: Any) -> dict:
 
 @app.post("/", include_in_schema=False)
 async def jsonrpc_handler(request: Request):
-    body = await request.json()
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse(status_code=400, content={"error": "Invalid JSON body"})
     jsonrpc = body.get("jsonrpc", "2.0")
     method = body.get("method", "")
     params = body.get("params", {})
@@ -191,6 +199,9 @@ async def jsonrpc_handler(request: Request):
 @app.post("/sendMessage", include_in_schema=False)
 async def send_message_direct(request: Request):
     """Convenience endpoint for non-JSON-RPC callers."""
-    body = await request.json()
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse(status_code=400, content={"error": "Invalid JSON body"})
     params = {"id": f"task-{uuid.uuid4().hex[:12]}", "message": body.get("message", {})}
     return await _handle_send_message(params)

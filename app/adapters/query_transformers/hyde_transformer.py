@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.ports.query_transformer import QueryTransformerPort
+
+logger = logging.getLogger(__name__)
 
 _HYDE_PROMPT = ChatPromptTemplate.from_messages([
     ("system", "You are a helpful assistant. Generate a brief, factual answer to the question."),
@@ -23,7 +27,12 @@ class HyDEQueryTransformerAdapter(QueryTransformerPort):
         self._llm = llm
 
     async def transform(self, query: str) -> list[str]:
-        chain = _HYDE_PROMPT | self._llm
-        result = await chain.ainvoke({"question": query})
-        hypothetical_answer = result.content.strip()
-        return [hypothetical_answer]
+        try:
+            chain = _HYDE_PROMPT | self._llm
+            result = await chain.ainvoke({"question": query})
+            hypothetical_answer = result.content.strip()
+            if hypothetical_answer:
+                return [hypothetical_answer]
+        except Exception as exc:
+            logger.warning("HyDE transformer failed, using original query: %s", exc)
+        return [query]

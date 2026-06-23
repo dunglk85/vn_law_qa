@@ -65,6 +65,8 @@ class CitationCheckerAgent:
         gate_log : list[str]      = []
 
         async def _check(a: Article):
+            if not a.id:
+                return None, a.id
             try:
                 docs = await self.vector_store.get_documents_by_ids([a.id])
                 if docs:

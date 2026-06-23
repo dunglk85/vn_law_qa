@@ -68,11 +68,8 @@ class A2ARemoteClient(A2AClientRouter):
 
         for attempt in range(max_attempts):
             try:
-                events = await asyncio.wait_for(
-                    self._collect_sse_events(url, rpc_body),
-                    timeout=self._timeout,
-                )
-                for event in events:
+                deadline = asyncio.get_running_loop().time() + self._timeout
+                async for event in self._stream_sse_events(url, rpc_body, deadline):
                     yield event
                 return
             except Exception as exc:
@@ -89,24 +86,26 @@ class A2ARemoteClient(A2AClientRouter):
         logger.error("A2A remote: task %s failed after %d attempts: %s", task_id, max_attempts, last_exc)
         yield A2AEvent(type="task_status", status={"state": "failed", "error": str(last_exc)})
 
-    async def _collect_sse_events(self, url: str, rpc_body: dict) -> list[A2AEvent]:
-        events: list[A2AEvent] = []
+    async def _stream_sse_events(self, url: str, rpc_body: dict, deadline: float) -> AsyncIterator[A2AEvent]:
+        remaining = max(0.0, deadline - asyncio.get_running_loop().time())
         async with aconnect_sse(
             self._client, "POST", f"{url}/",
             json=rpc_body,
         ) as event_source:
             async for event in event_source.aiter_sse():
                 try:
+                    if asyncio.get_running_loop().time() > deadline:
+                        logger.warning("A2A SSE stream: deadline exceeded")
+                        break
                     if event.event == "task_status":
                         data = json.loads(event.data)
-                        events.append(A2AEvent(type="task_status", status=data.get("status")))
+                        yield A2AEvent(type="task_status", status=data.get("status"))
                     elif event.event == "task_artifact":
                         data = json.loads(event.data)
-                        events.append(A2AEvent(type="task_artifact", artifact=data.get("artifact")))
+                        yield A2AEvent(type="task_artifact", artifact=data.get("artifact"))
                     elif event.event == "error":
                         data = json.loads(event.data)
                         logger.error("A2A remote error: %s", data)
-                        events.append(A2AEvent(type="task_status", status={"state": "failed", "error": str(data)}))
+                        yield A2AEvent(type="task_status", status={"state": "failed", "error": str(data)})
                 except json.JSONDecodeError as exc:
                     logger.warning("A2A remote: malformed SSE event data, skipping: %s", exc)
-        return events

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
 from app.auth.jwt import TOKEN_SCHEMA, create_access_token, create_refresh_token
@@ -88,12 +89,16 @@ class RefreshRequest(BaseModel):
 
 
 @router.post("/token", response_model=TokenResponse)
-async def login(req: TokenRequest) -> TokenResponse:
-    if req.username != config.admin_username or req.password != config.admin_password:
+async def login(req: TokenRequest, request: Request) -> TokenResponse:
+    if not secrets.compare_digest(req.username, config.admin_username) or not secrets.compare_digest(req.password, config.admin_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
         )
+    client_ip = _get_client_ip(request)
+    rate_limiter = getattr(request.app.state, "rate_limiter", None)
+    if rate_limiter and not await rate_limiter.check(client_ip):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
     access_token = create_access_token(user_id=req.username, tenant_id="default", roles=["admin"])
     refresh_token = create_refresh_token()
     expires = datetime.now(UTC) + timedelta(days=config.refresh_token_expire_days)
@@ -101,8 +106,20 @@ async def login(req: TokenRequest) -> TokenResponse:
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
+def _get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        ip = forwarded.split(",")[0].strip()
+        if ip:
+            return ip
+    return request.client.host if request.client else "unknown"
+
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(req: RefreshRequest) -> TokenResponse:
+async def refresh(req: RefreshRequest, request: Request) -> TokenResponse:
+    client_ip = _get_client_ip(request)
+    rate_limiter = getattr(request.app.state, "rate_limiter", None)
+    if rate_limiter and not await rate_limiter.check(client_ip):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
     stored = await _refresh_store.pop(req.refresh_token)
     if stored is None:
         raise HTTPException(

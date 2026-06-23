@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import copy
 import time
 
@@ -10,6 +11,7 @@ class MemorySessionStore(SessionStorePort):
     def __init__(self, ttl_seconds: int = 3600) -> None:
         self._ttl = ttl_seconds
         self._store: dict[str, tuple[dict, float]] = {}
+        self._lock = asyncio.Lock()
 
     def _is_expired(self, timestamp: float) -> bool:
         return time.time() - timestamp > self._ttl
@@ -20,22 +22,26 @@ class MemorySessionStore(SessionStorePort):
             del self._store[sid]
 
     async def load(self, session_id: str) -> dict:
-        self._evict_expired()
-        entry = self._store.get(session_id)
-        if entry is None:
-            return dict(_SESSION_DATA_DEFAULT)
-        return copy.deepcopy(entry[0])
+        async with self._lock:
+            self._evict_expired()
+            entry = self._store.get(session_id)
+            if entry is None:
+                return dict(_SESSION_DATA_DEFAULT)
+            return copy.deepcopy(entry[0])
 
     async def save(self, session_id: str, session_data: dict) -> None:
-        payload = {
-            "history": copy.deepcopy(session_data.get("history", [])),
-            "summary": session_data.get("summary", ""),
-        }
-        self._store[session_id] = (payload, time.time())
+        async with self._lock:
+            payload = {
+                "history": copy.deepcopy(session_data.get("history", [])),
+                "summary": session_data.get("summary", ""),
+            }
+            self._store[session_id] = (payload, time.time())
 
     async def delete(self, session_id: str) -> None:
-        self._store.pop(session_id, None)
+        async with self._lock:
+            self._store.pop(session_id, None)
 
     async def exists(self, session_id: str) -> bool:
-        self._evict_expired()
-        return session_id in self._store
+        async with self._lock:
+            self._evict_expired()
+            return session_id in self._store

@@ -7,6 +7,7 @@ Requires env vars: LLM_TYPE, LLM_MODEL, etc.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -75,14 +76,18 @@ async def health():
 # Agent instantiation (lazy)
 # ---------------------------------------------------------------------------
 
+_get_agent_lock = asyncio.Lock()
 
-def _get_agent():
+
+async def _get_agent():
     global _llm_inst, _synthesis
     if _synthesis is None:
-        _llm_inst = create_llm()
-        from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
+        async with _get_agent_lock:
+            if _synthesis is None:
+                _llm_inst = create_llm()
+                from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
 
-        _synthesis = ResponseSynthesizerAgent(_llm_inst.get_chat_model())
+                _synthesis = ResponseSynthesizerAgent(_llm_inst.get_chat_model())
     return _synthesis
 
 
@@ -136,7 +141,8 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
         })}
 
         try:
-            result = await _get_agent().synthesize(query, citations)
+            agent = await _get_agent()
+            result = await agent.synthesize(query, citations)
 
             yield {"event": "task_status", "data": json.dumps({
                 "id": task_id,
@@ -175,7 +181,10 @@ async def _error_stream(task_id: str, message: str):
 
 @app.post("/", include_in_schema=False)
 async def jsonrpc_handler(request: Request):
-    body = await request.json()
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse(status_code=400, content={"error": "Invalid JSON body"})
     jsonrpc = body.get("jsonrpc", "2.0")
     method = body.get("method", "")
     params = body.get("params", {})
@@ -198,6 +207,9 @@ async def jsonrpc_handler(request: Request):
 @app.post("/sendMessage", include_in_schema=False)
 async def send_message_direct(request: Request):
     """Convenience endpoint for non-JSON-RPC callers."""
-    body = await request.json()
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse(status_code=400, content={"error": "Invalid JSON body"})
     params = {"id": f"task-{uuid.uuid4().hex[:12]}", "message": body.get("message", {})}
     return await _handle_send_message(params)

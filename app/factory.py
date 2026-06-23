@@ -379,7 +379,7 @@ def create_session_store() -> SessionStorePort:
             )
             logger.info("Session store: Redis-backed")
             return store
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):
             logger.warning("Redis connection failed for session store, falling back to in-memory")
 
     from app.adapters.session_stores.memory_session_store import MemorySessionStore
@@ -429,7 +429,7 @@ def create_rate_limiter() -> RateLimiterPort:
             )
             logger.info("Rate limiter: Redis-backed (multi-instance ready)")
             return limiter
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):
             logger.warning("Redis connection failed for rate limiter, falling back to in-memory")
 
     logger.warning("No REDIS_URL configured, rate limiter falling back to in-memory (single-instance only)")

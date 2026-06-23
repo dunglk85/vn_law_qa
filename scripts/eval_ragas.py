@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -21,6 +22,7 @@ BASE_DIR = Path(__file__).parent.parent
 TEST_DATA_PATH = BASE_DIR / "seed" / "qna_test.json"
 RESULTS_PATH = BASE_DIR / "eval_results.json"
 API_URL = "http://localhost:8000/ask"
+API_TOKEN = os.getenv("EVAL_API_TOKEN") or ""
 REQUEST_TIMEOUT = 30.0
 DEFAULT_TEST_SIZE = 20
 
@@ -103,13 +105,14 @@ async def evaluate_rag_system(test_path: Path = TEST_DATA_PATH) -> None:
 
     oai_llm = ChatOpenAI(model=config.llm_model)
 
+    headers = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
         for item in test_data:
             question = item["question"]
             reference_answer = item["answer"]
 
             try:
-                response = await client.post(API_URL, json={"question": question})
+                response = await client.post(API_URL, json={"question": question}, headers=headers)
                 response.raise_for_status()
                 res = response.json()
                 answer = res["answer"]

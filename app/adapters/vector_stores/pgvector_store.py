@@ -102,6 +102,8 @@ class PGVectorStoreAdapter(VectorStorePort):
 
     COLLECTION_NAME = "langchain"
 
+    SUPPORTED_SCHEMES = frozenset({"postgresql+psycopg://", "postgresql+asyncpg://", "postgresql://"})
+
     def __init__(
         self,
         connection_string: str,
@@ -113,6 +115,11 @@ class PGVectorStoreAdapter(VectorStorePort):
         ivfflat_lists: int = 100,
         ivfflat_probes: int = 10,
     ) -> None:
+        if not any(connection_string.startswith(s) for s in self.SUPPORTED_SCHEMES):
+            raise ValueError(
+                f"Unsupported connection string scheme. "
+                f"Expected one of: {', '.join(sorted(self.SUPPORTED_SCHEMES))}"
+            )
         self._connection_string = connection_string.replace("postgresql+asyncpg://", "postgresql+psycopg://")
         self._embeddings = embeddings_port.get_embeddings()
         self._store: PGVector | None = None
@@ -164,7 +171,7 @@ class PGVectorStoreAdapter(VectorStorePort):
         """Return a retriever that uses sync similarity_search via thread pool."""
         self._get_store()
         kwargs = search_kwargs or {}
-        wrapper = _SyncRetriever.model_construct(_store=self._store, _search_kwargs=kwargs)
+        wrapper = _SyncRetriever(_store=self._store, _search_kwargs=kwargs)
         return wrapper
 
     async def create_index(self) -> None:

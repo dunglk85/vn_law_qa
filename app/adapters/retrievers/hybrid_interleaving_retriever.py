@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
@@ -23,10 +25,10 @@ class _HybridInterleavingRetriever(BaseRetriever):
         sparse_docs = self._sparse_retriever.invoke(query)
 
         interleaved: list[Document] = []
-        seen_hashes: set[int] = set()
+        seen_hashes: set[str] = set()
 
         def _try_add(doc: Document) -> bool:
-            h = hash(doc.page_content)
+            h = hashlib.sha256(doc.page_content.encode()).hexdigest()
             if h not in seen_hashes:
                 interleaved.append(doc)
                 seen_hashes.add(h)

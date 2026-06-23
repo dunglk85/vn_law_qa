@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 def create_knowledge_search_tool(retriever_port: RetrieverPort, k: int = 5):
     """Factory: returns a LangChain @tool bound to a specific RetrieverPort."""
+    _cached_retriever = None
 
     @tool
     async def knowledge_search(query: str) -> list[dict]:
@@ -20,7 +21,10 @@ def create_knowledge_search_tool(retriever_port: RetrieverPort, k: int = 5):
         Args:
             query: Natural language search query.
         """
-        retriever = retriever_port.get_retriever(search_kwargs={"k": k})
+        nonlocal _cached_retriever
+        if _cached_retriever is None:
+            _cached_retriever = retriever_port.get_retriever(search_kwargs={"k": k})
+        retriever = _cached_retriever
         try:
             docs: list[Document] = await retriever.ainvoke(query)
         except Exception as exc:

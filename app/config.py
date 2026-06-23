@@ -22,6 +22,10 @@ def _int_env(key: str, default: int) -> int:
         return default
 
 
+def _pos_int_env(key: str, default: int) -> int:
+    return max(1, _int_env(key, default))
+
+
 def _float_env(key: str, default: float) -> float:
     raw = os.getenv(key)
     if raw is None:
@@ -31,6 +35,10 @@ def _float_env(key: str, default: float) -> float:
     except (ValueError, TypeError):
         logger.warning("Invalid %s='%s', falling back to %s", key, raw, default)
         return default
+
+
+def _pos_float_env(key: str, default: float) -> float:
+    return max(0.1, _float_env(key, default))
 
 
 def _str_env(key: str, default: str) -> str:
@@ -92,8 +100,8 @@ class AppConfig:
     # ------------------------------------------------------------------
     # RAG tuning parameters
     # ------------------------------------------------------------------
-    retrieval_k: int = _int_env("RETRIEVAL_K", 5)
-    rrf_k: int = _int_env("RRF_K", 60)
+    retrieval_k: int = _pos_int_env("RETRIEVAL_K", 5)
+    rrf_k: int = _pos_int_env("RRF_K", 60)
     reranker_top_n: int = _int_env("RERANKER_TOP_N", 3)
     mmr_lambda_mult: float = _float_env("MMR_LAMBDA_MULT", 0.5)
     cache_distance_threshold: float = _float_env("CACHE_DISTANCE_THRESHOLD", 0.98)
@@ -119,10 +127,10 @@ class AppConfig:
     llm_timeout: float = _float_env("LLM_TIMEOUT", 30.0)
     agent_timeout: float = _float_env("AGENT_TIMEOUT", 90.0)
     ask_timeout: float = _float_env("ASK_TIMEOUT", 120.0)
-    rate_limit_max: int = _int_env("RATE_LIMIT_MAX", 30)
-    rate_limit_window: float = _float_env("RATE_LIMIT_WINDOW", 60.0)
+    rate_limit_max: int = _pos_int_env("RATE_LIMIT_MAX", 30)
+    rate_limit_window: float = _pos_float_env("RATE_LIMIT_WINDOW", 60.0)
 
-    max_retries: int = _int_env("MAX_RETRIES", 2)
+    max_retries: int = _pos_int_env("MAX_RETRIES", 2)
     quality_threshold: float = _float_env("QUALITY_THRESHOLD", 0.75)
     n_results_per_vector: int = _int_env("N_RESULTS_PER_VECTOR", 5)
     top_k_research: int = _int_env("TOP_K_RESEARCH", 5)
@@ -182,13 +190,15 @@ config = AppConfig()
 
 # --- Startup validation ---
 if config.jwt_secret == "change-me-in-production":
-    logger.warning(
-        "JWT_SECRET is using the default value — "
-        "set a strong secret in production via the JWT_SECRET env var"
+    from app.exceptions import ConfigurationError
+    raise ConfigurationError(
+        "JWT_SECRET is using the default value 'change-me-in-production'. "
+        "Set a strong secret via the JWT_SECRET env var."
     )
 
 if config.admin_password == "admin":
-    logger.warning(
-        "ADMIN_PASSWORD is 'admin' — "
-        "set a strong password in production via the ADMIN_PASSWORD env var"
+    from app.exceptions import ConfigurationError
+    raise ConfigurationError(
+        "ADMIN_PASSWORD is 'admin'. "
+        "Set a strong password via the ADMIN_PASSWORD env var."
     )

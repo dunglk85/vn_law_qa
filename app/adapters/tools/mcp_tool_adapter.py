@@ -15,6 +15,8 @@ from typing import Any
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from app.config import config
+
 logger = logging.getLogger(__name__)
 
 _MCP_SERVER_SCRIPT = str(Path(__file__).parents[3] / "mcp-servers" / "knowledge_search_server.py")
@@ -104,7 +106,7 @@ class MCPKnowledgeSearchTool:
             list of result dicts, each with 'content', 'source', 'score'.
         """
         query = input_data.get("query", "")
-        k = input_data.get("k")
+        k = input_data.get("k", config.retrieval_k)
 
         for attempt in range(self._max_restarts + 1):
             try:

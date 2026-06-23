@@ -7,6 +7,7 @@ It depends only on Port interfaces injected at construction time.
 from __future__ import annotations
 
 import hashlib
+import logging
 
 from langchain_classic.chains import create_retrieval_chain
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
@@ -21,6 +22,8 @@ from app.ports.query_transformer import QueryTransformerPort
 from app.ports.reranker import RerankerPort
 from app.ports.retriever import RetrieverPort
 from app.ports.vector_store import VectorStorePort
+
+logger = logging.getLogger(__name__)
 
 _SYSTEM = """You are a grounded company knowledge assistant.
 Always base answers strictly on the provided context.
@@ -81,7 +84,11 @@ class RAGService:
         if filter_dict:
             search_kwargs["filter"] = filter_dict
 
-        base_retriever = self._retriever.get_retriever(search_kwargs=search_kwargs)
+        try:
+            base_retriever = self._retriever.get_retriever(search_kwargs=search_kwargs)
+        except RuntimeError:
+            logger.warning("Retriever index not built, returning no-context answer")
+            return None
 
         compressor = self._reranker.get_compressor()
         if compressor is not None:
@@ -103,7 +110,7 @@ class RAGService:
         for query in queries:
             docs = await retriever.ainvoke(query)
             for doc in docs:
-                content_hash = hashlib.md5(doc.page_content.encode()).hexdigest()
+                content_hash = hashlib.sha256(doc.page_content.encode()).hexdigest()
                 if content_hash not in seen_content:
                     all_docs.append(doc)
                     seen_content.add(content_hash)
@@ -136,6 +143,8 @@ class RAGService:
             transformed_queries = [question]
 
         retriever = self._build_retriever(category=category, tenant_id=tenant_id)
+        if retriever is None:
+            return _NO_CONTEXT_ANSWER, [], [], None
 
         if len(transformed_queries) > 1:
             docs = await self._retrieve_with_transformed_queries(retriever, transformed_queries)

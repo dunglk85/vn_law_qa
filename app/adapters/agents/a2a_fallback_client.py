@@ -20,21 +20,27 @@ class InProcessFallbackClient(A2AClientRouter):
     ) -> AsyncIterator[A2AEvent]:
         try:
             if agent == "legal-research-agent":
-                query = payload["query"]
+                query = payload.get("query")
+                if not query:
+                    raise ValueError("Missing 'query' in payload for legal-research-agent")
                 articles = await self._research_agent.run(query)
                 yield A2AEvent(type="task_status", status={"state": "completed"})
                 yield A2AEvent(type="task_artifact", artifact={"articles": articles})
 
             elif agent == "citation-checker-agent":
-                articles = payload["articles"]
-                query = payload["query"]
+                articles = payload.get("articles", [])
+                query = payload.get("query", "")
+                if not query:
+                    raise ValueError("Missing 'query' in payload for citation-checker-agent")
                 citations = await self._citation_agent.run(articles, query)
                 yield A2AEvent(type="task_status", status={"state": "completed"})
                 yield A2AEvent(type="task_artifact", artifact={"citations": citations})
 
             elif agent == "response-synthesizer-agent":
-                query = payload["query"]
-                citations = payload["citations"]
+                query = payload.get("query", "")
+                citations = payload.get("citations", [])
+                if not query:
+                    raise ValueError("Missing 'query' in payload for response-synthesizer-agent")
                 result = await self._synthesis_agent.synthesize(query, citations)
                 yield A2AEvent(type="task_status", status={"state": "completed"})
                 yield A2AEvent(type="task_artifact", artifact=result)

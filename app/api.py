@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -96,11 +97,15 @@ async def lifespan(app: FastAPI):
             research_agent = create_legal_research_agent(retriever=app.state.retriever, llm=app.state.llm)
             citation_agent = create_citation_checker_agent(vector_store=app.state.vector_store, llm=app.state.llm)
             synthesis_agent = create_response_synthesizer_agent(llm=app.state.llm)
-            a2a_client = create_a2a_client(
-                research_agent=research_agent,
-                citation_agent=citation_agent,
-                synthesis_agent=synthesis_agent,
-            )
+            try:
+                a2a_client = create_a2a_client(
+                    research_agent=research_agent,
+                    citation_agent=citation_agent,
+                    synthesis_agent=synthesis_agent,
+                )
+            except ValueError as exc:
+                logger.error("Failed to create A2A client: %s", exc)
+                a2a_client = None
             supervisor = create_supervisor_agent(
                 research_agent=research_agent,
                 citation_agent=citation_agent,
@@ -225,7 +230,9 @@ async def metrics() -> dict:
 def _get_client_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        ip = forwarded.split(",")[0].strip()
+        if ip:
+            return ip
     return request.client.host if request.client else "unknown"
 
 
@@ -268,10 +275,11 @@ async def ask(
                     for step in reversed(reasoning_steps):
                         if step.get("action") == "validate_quality":
                             output = step.get("output", "")
-                            if "quality_score=" in output:
+                            m = re.search(r'quality_score=([\d.]+)', output)
+                            if m:
                                 try:
-                                    quality_score = float(output.split("quality_score=")[1].split(",")[0])
-                                except (ValueError, IndexError):
+                                    quality_score = float(m.group(1))
+                                except ValueError:
                                     pass
                             break
             else:

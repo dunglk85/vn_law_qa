@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 from pathlib import Path
 
 import pandas as pd
@@ -21,25 +20,6 @@ def read_file(fp: Path) -> str:
             return fp.read_text(encoding="latin-1")
         except Exception:
             return ""
-
-
-def load_all_text(data_dir: Path) -> list[tuple[str, str, str]]:
-    docs = []
-    for fp in sorted(data_dir.rglob("*")):
-        if not fp.is_file():
-            continue
-        ext = fp.suffix.lower()
-        if ext not in (".txt", ".md"):
-            docs.append((fp.name, fp.parent.name, ext))
-            continue
-        text = read_file(fp)
-        if text.strip():
-            docs.append((text, fp.name, fp.parent.name))
-    return docs
-
-
-def simple_extract(ext: str) -> str:
-    return ext.lstrip(".").upper()
 
 
 def chunk_text(text: str, source: str, category: str) -> list[dict]:

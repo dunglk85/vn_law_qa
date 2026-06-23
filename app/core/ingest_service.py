@@ -98,7 +98,10 @@ async def run_ingest(
 
     logger.info("INGEST: %d documents stored.", len(docs))
 
-    await vector_store.create_index()
-    retriever.build_index(docs)
+    try:
+        await vector_store.create_index()
+        retriever.build_index(docs)
+    except Exception as exc:
+        logger.warning("Index post-processing failed (non-fatal): %s", exc)
 
     return {"documents": len(docs), "chunks": len(docs), "pre_chunked": True}

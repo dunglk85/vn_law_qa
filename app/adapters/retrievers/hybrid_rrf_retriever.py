@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
@@ -23,16 +25,16 @@ class _HybridRRFRetriever(BaseRetriever):
         dense_docs = self._dense_retriever.invoke(query)
         sparse_docs = self._sparse_retriever.invoke(query)
 
-        scores: dict[int, float] = {}
-        doc_map: dict[int, Document] = {}
+        scores: dict[str, float] = {}
+        doc_map: dict[str, Document] = {}
 
         for rank, doc in enumerate(dense_docs):
-            content_hash = hash(doc.page_content)
+            content_hash = hashlib.sha256(doc.page_content.encode()).hexdigest()
             doc_map[content_hash] = doc
             scores[content_hash] = scores.get(content_hash, 0.0) + 1.0 / (self._rrf_k + rank + 1)
 
         for rank, doc in enumerate(sparse_docs):
-            content_hash = hash(doc.page_content)
+            content_hash = hashlib.sha256(doc.page_content.encode()).hexdigest()
             if content_hash not in doc_map:
                 doc_map[content_hash] = doc
             scores[content_hash] = scores.get(content_hash, 0.0) + 1.0 / (self._rrf_k + rank + 1)
