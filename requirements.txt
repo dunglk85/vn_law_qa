@@ -49,6 +49,6 @@ mcp>=1.27
 a2a-sdk>=1.1
 
 # DB / embeddings
-numpy>=2.0.0
+numpy>=1.24.0,<2
 pgvector>=0.2.5
 sqlalchemy>=2.0.0
