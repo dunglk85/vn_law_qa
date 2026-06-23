@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+SCHEMA_VERSION = "1.0.0"
+
 
 class LawDocumentChunk(BaseModel):
     """A single chunk of a Pháp Điển law document."""
@@ -22,6 +24,7 @@ class LawDocumentChunk(BaseModel):
     chunk_index: int = Field(default=0, description="Index within the article")
     total_chunks: int = Field(default=1, description="Total chunks for the article")
     text: str = Field(description="Chunk text content")
+    schema_version: str = Field(default=SCHEMA_VERSION, description="Parquet schema version")
 
 
 class VBQPPLChunk(BaseModel):
@@ -34,3 +37,4 @@ class VBQPPLChunk(BaseModel):
     chunk_index: int = Field(default=0, description="Index within the document")
     total_chunks: int = Field(default=1, description="Total chunks for the document")
     text: str = Field(description="Chunk text content")
+    schema_version: str = Field(default=SCHEMA_VERSION, description="Parquet schema version")

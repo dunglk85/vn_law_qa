@@ -236,7 +236,7 @@ class TestBronzeParse:
         })
         dieu_df.to_parquet(phap_dien_dir / "dieu.parquet", index=False)
 
-        # Patch requests.get so fetch_document returns a synthetic HTML doc for ID 222
+        # Patch requests.Session.get so fetch_document returns a synthetic HTML doc for ID 222
         fake_html = (
             '<div class="fulltext">'
             "  <div>wrapper</div>"
@@ -249,11 +249,11 @@ class TestBronzeParse:
 
         fetched_urls: list[str] = []
 
-        def fake_get(url, **kwargs):
+        def fake_session_get(url, **kwargs):
             fetched_urls.append(url)
             return mock_response
 
-        with patch("requests.get", side_effect=fake_get), patch("time.sleep"):
+        with patch("requests.Session.get", side_effect=fake_session_get), patch("time.sleep"):
             import importlib, src.bronze.vbqppl as m
             importlib.reload(m)
             m.main()

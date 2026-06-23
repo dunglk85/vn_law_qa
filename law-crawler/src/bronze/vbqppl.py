@@ -33,12 +33,17 @@ def get_item_id(url: str | None) -> str | None:
     return match.group(1) if match else None
 
 
-def fetch_document(item_id: str) -> str | None:
+def _create_session() -> requests.Session:
+    session = requests.Session()
+    session.headers.update({"User-Agent": USER_AGENT})
+    return session
+
+
+def fetch_document(session: requests.Session, item_id: str) -> str | None:
     url = f"{VBPL_BASE_URL}?ItemID={item_id}"
-    headers = {"User-Agent": USER_AGENT}
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            response = requests.get(url, timeout=REQUEST_TIMEOUT, headers=headers)
+            response = session.get(url, timeout=REQUEST_TIMEOUT)
             response.raise_for_status()
             soup = BeautifulSoup(response.content, "html.parser")
             div_text = soup.find_all("div", class_="fulltext")
@@ -93,20 +98,35 @@ def main() -> None:
         already_fetched = set()
     # ─────────────────────────────────────────────────────────────────────────
 
-    new_count = 0
-    for i, item_id in enumerate(item_ids, 1):
-        if str(item_id) in already_fetched:
-            logger.debug("[%d/%d] Skipping already-fetched ItemID %s", i, len(item_ids), item_id)
-            continue
+    session = _create_session()
+    try:
+        new_count = 0
+        for i, item_id in enumerate(item_ids, 1):
+            if str(item_id) in already_fetched:
+                logger.debug("[%d/%d] Skipping already-fetched ItemID %s", i, len(item_ids), item_id)
+                continue
 
-        logger.info("[%d/%d] Fetching ItemID %s", i, len(item_ids), item_id)
-        content = fetch_document(item_id)
-        if content:
-            collected.append({"id": item_id, "noidung": content})
-            already_fetched.add(str(item_id))
-            new_count += 1
+            logger.info("[%d/%d] Fetching ItemID %s", i, len(item_ids), item_id)
+            content = fetch_document(session, item_id)
+            if content:
+                collected.append({"id": item_id, "noidung": content})
+                already_fetched.add(str(item_id))
+                new_count += 1
 
-        if new_count > 0 and new_count % SAVE_EVERY == 0:
+            if new_count > 0 and new_count % SAVE_EVERY == 0:
+                df_save = pd.DataFrame(collected)
+                tmp_path = existing_path.with_suffix(".tmp")
+                df_save.to_parquet(tmp_path, index=False)
+                try:
+                    tmp_path.replace(existing_path)
+                except OSError:
+                    import shutil
+                    shutil.move(str(tmp_path), str(existing_path))
+                logger.info("Saved checkpoint at %d total documents (%d new)", len(collected), new_count)
+
+            time.sleep(CRAWL_DELAY)  # I4 fix: configurable via LAW_CRAWL_DELAY env / params.yaml crawl_delay
+
+        if new_count > 0 and collected:
             df_save = pd.DataFrame(collected)
             tmp_path = existing_path.with_suffix(".tmp")
             df_save.to_parquet(tmp_path, index=False)
@@ -115,21 +135,10 @@ def main() -> None:
             except OSError:
                 import shutil
                 shutil.move(str(tmp_path), str(existing_path))
-            logger.info("Saved checkpoint at %d total documents (%d new)", len(collected), new_count)
 
-        time.sleep(CRAWL_DELAY)  # I4 fix: configurable via LAW_CRAWL_DELAY env / params.yaml crawl_delay
-
-    if new_count > 0 and collected:
-        df_save = pd.DataFrame(collected)
-        tmp_path = existing_path.with_suffix(".tmp")
-        df_save.to_parquet(tmp_path, index=False)
-        try:
-            tmp_path.replace(existing_path)
-        except OSError:
-            import shutil
-            shutil.move(str(tmp_path), str(existing_path))
-
-    logger.info("Bronze VBQPPL done: %d new documents crawled (%d total)", new_count, len(collected))
+        logger.info("Bronze VBQPPL done: %d new documents crawled (%d total)", new_count, len(collected))
+    finally:
+        session.close()
 
 
 if __name__ == "__main__":

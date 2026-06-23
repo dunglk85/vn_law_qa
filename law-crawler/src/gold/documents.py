@@ -6,6 +6,7 @@ Each row is one article (điều) with full hierarchical context:
 
 Also produces enriched VBQPPL document views.
 """
+import numpy as np
 import pandas as pd
 
 from src.settings import GOLD, SILVER_PHAP_DIEN, SILVER_VBQPPL, setup_logging
@@ -63,18 +64,17 @@ def build_phap_dien_documents() -> pd.DataFrame:
     else:
         df_dieu["chude_ten"] = ""
 
-    # Build a rich text field with full context for embedding (vectorized)
+    # Build a rich text field with full context for embedding (fully vectorized)
     base = (
         "Chủ đề: " + df_dieu["chude_ten"].fillna("") + "\n"
         "Đề mục: " + df_dieu["demuc_ten"].fillna("") + "\n"
         "Chương: " + df_dieu["chuong_ten"].fillna("") + "\n"
         "Điều: " + df_dieu["ten"].fillna("") + "\n"
     )
-    has_vbqppl = df_dieu["vbqppl"].fillna("").astype(bool)
     vbqppl_line = "VBQPPL: " + df_dieu["vbqppl"].fillna("") + "\n"
-    df_dieu["full_context"] = (
-        base + vbqppl_line.where(has_vbqppl, "") + df_dieu["noidung"].fillna("")
-    )
+    df_dieu["full_context"] = base + np.where(
+        df_dieu["vbqppl"].fillna("").astype(bool), vbqppl_line, ""
+    ) + df_dieu["noidung"].fillna("")
 
     output_cols = [
         "mapc", "ten", "noidung", "vbqppl", "vbqppl_link",

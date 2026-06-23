@@ -30,9 +30,9 @@ except ImportError:
 
     class LawDocumentChunk:
         __slots__ = ("chunk_id", "article_id", "title", "chude", "demuc",
-                     "chuong", "chunk_index", "total_chunks", "text")
+                     "chuong", "chunk_index", "total_chunks", "text", "schema_version")
         def __init__(self, chunk_id="", article_id="", title="", chude="",
-                     demuc="", chuong="", chunk_index=0, total_chunks=1, text=""):
+                     demuc="", chuong="", chunk_index=0, total_chunks=1, text="", schema_version="1.0.0"):
             self.chunk_id = chunk_id
             self.article_id = article_id
             self.title = title
@@ -42,12 +42,13 @@ except ImportError:
             self.chunk_index = chunk_index
             self.total_chunks = total_chunks
             self.text = text
+            self.schema_version = schema_version
 
     class VBQPPLChunk:
         __slots__ = ("chunk_id", "source_id", "source_type", "parent_id",
-                     "chunk_index", "total_chunks", "text")
+                     "chunk_index", "total_chunks", "text", "schema_version")
         def __init__(self, chunk_id="", source_id="", source_type="vbqppl",
-                     parent_id=None, chunk_index=0, total_chunks=1, text=""):
+                     parent_id=None, chunk_index=0, total_chunks=1, text="", schema_version="1.0.0"):
             self.chunk_id = chunk_id
             self.source_id = source_id
             self.source_type = source_type
@@ -55,12 +56,13 @@ except ImportError:
             self.chunk_index = chunk_index
             self.total_chunks = total_chunks
             self.text = text
+            self.schema_version = schema_version
 
 
 _SLOT_KEYS_LAW = ("chunk_id", "article_id", "title", "chude",
-                  "demuc", "chuong", "chunk_index", "total_chunks", "text")
+                  "demuc", "chuong", "chunk_index", "total_chunks", "text", "schema_version")
 _SLOT_KEYS_VB = ("chunk_id", "source_id", "source_type", "parent_id",
-                 "chunk_index", "total_chunks", "text")
+                 "chunk_index", "total_chunks", "text", "schema_version")
 
 
 def _row_to_law_chunk(row: dict) -> LawDocumentChunk:
