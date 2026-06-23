@@ -87,7 +87,6 @@ class A2ARemoteClient(A2AClientRouter):
         yield A2AEvent(type="task_status", status={"state": "failed", "error": str(last_exc)})
 
     async def _stream_sse_events(self, url: str, rpc_body: dict, deadline: float) -> AsyncIterator[A2AEvent]:
-        remaining = max(0.0, deadline - asyncio.get_running_loop().time())
         async with aconnect_sse(
             self._client, "POST", f"{url}/",
             json=rpc_body,

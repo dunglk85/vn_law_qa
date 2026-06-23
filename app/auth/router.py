@@ -90,7 +90,9 @@ class RefreshRequest(BaseModel):
 
 @router.post("/token", response_model=TokenResponse)
 async def login(req: TokenRequest, request: Request) -> TokenResponse:
-    if not secrets.compare_digest(req.username, config.admin_username) or not secrets.compare_digest(req.password, config.admin_password):
+    if not secrets.compare_digest(req.username, config.admin_username) or not secrets.compare_digest(
+        req.password, config.admin_password
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
