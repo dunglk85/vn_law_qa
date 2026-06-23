@@ -37,9 +37,9 @@ GOLD = DATA / "gold"
 
 # VBQPPL web crawl settings
 VBPL_BASE_URL = "https://vbpl.vn/TW/Pages/vbpq-toanvan.aspx"
-REQUEST_TIMEOUT = 10
-SAVE_EVERY = 10
-MAX_RETRIES = 3
+REQUEST_TIMEOUT = int(os.getenv("LAW_REQUEST_TIMEOUT", _params.get("request_timeout", 10)))
+SAVE_EVERY = int(os.getenv("LAW_SAVE_EVERY", _params.get("save_every", 10)))
+MAX_RETRIES = int(os.getenv("LAW_MAX_RETRIES", _params.get("max_retries", 3)))
 
 # Checkpoint for Pháp Điển crawl
 CHECKPOINT = os.getenv("LAW_CHECKPOINT", _params.get("checkpoint", ""))
@@ -51,3 +51,6 @@ CHUNK_OVERLAP = int(os.getenv("LAW_CHUNK_OVERLAP", _params.get("chunk_overlap", 
 # Polite crawl delay between requests (seconds)
 # Configurable to respect server rate limits without banning the crawler.
 CRAWL_DELAY = float(os.getenv("LAW_CRAWL_DELAY", _params.get("crawl_delay", 0.5)))
+
+# User-Agent for HTTP requests
+USER_AGENT = os.getenv("LAW_CRAWLER_USER_AGENT", _params.get("user_agent", "law-crawler/1.0 (research project; contact@example.com)"))

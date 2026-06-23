@@ -2,3 +2,7 @@ checkpoint: ""
 chunk_size: 1000
 chunk_overlap: 200
 crawl_delay: 0.5
+save_every: 10
+max_retries: 3
+request_timeout: 10
+user_agent: "law-crawler/1.0 (research project; contact@example.com)"

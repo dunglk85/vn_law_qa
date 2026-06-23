@@ -9,6 +9,7 @@ Without DVC: this script calls each stage's main() in sequence.
 With DVC: use 'dvc repro' instead for caching and incremental runs.
 """
 import argparse
+import sys
 
 from src.settings import setup_logging
 

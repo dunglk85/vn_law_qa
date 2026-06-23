@@ -4,7 +4,6 @@ Fetches full-text legal documents from vbpl.vn using ItemIDs
 extracted from the Pháp Điển bronze layer. Stores raw HTML content
 in Parquet.
 """
-import os
 import re
 import time
 
@@ -19,6 +18,7 @@ from src.settings import (
     MAX_RETRIES,
     REQUEST_TIMEOUT,
     SAVE_EVERY,
+    USER_AGENT,
     VBPL_BASE_URL,
     setup_logging,
 )
@@ -33,13 +33,9 @@ def get_item_id(url: str | None) -> str | None:
     return match.group(1) if match else None
 
 
-_USER_AGENT = os.getenv("LAW_CRAWLER_USER_AGENT",
-                       "law-crawler/1.0 (research project; contact@example.com)")
-
-
 def fetch_document(item_id: str) -> str | None:
     url = f"{VBPL_BASE_URL}?ItemID={item_id}"
-    headers = {"User-Agent": _USER_AGENT}
+    headers = {"User-Agent": USER_AGENT}
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             response = requests.get(url, timeout=REQUEST_TIMEOUT, headers=headers)

@@ -125,11 +125,10 @@ def ingest_nodes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFra
             ten = str(dieu_el.nextSibling).strip() if dieu_el.nextSibling else ""
             ghi_chu_html = dieu_el.parent.nextSibling
             vbqppl = ghi_chu_html.text.strip() if ghi_chu_html else None
-            vbqppl_link = (
-                ghi_chu_html.select("a")[0].get("href")  # I3 fix: .get() avoids KeyError when href is absent
-                if ghi_chu_html and ghi_chu_html.select("a")
-                else None
-            )
+            vbqppl_link = None
+            links = ghi_chu_html.select("a") if ghi_chu_html else []
+            if links:
+                vbqppl_link = links[0].get("href")
 
             noidung_html = dieu_el.parent.find_next("p", {"class": "pNoiDung"})
             if not noidung_html:
