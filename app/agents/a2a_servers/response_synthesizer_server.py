@@ -18,6 +18,10 @@ from sse_starlette.sse import EventSourceResponse
 from app.core.models import Citation
 from app.factory import create_llm
 
+# Module-level lazy cache
+_llm_inst = None
+_synthesis = None
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Response Synthesizer A2A Agent")
@@ -68,16 +72,18 @@ async def health():
 
 
 # ---------------------------------------------------------------------------
-# Agent instantiation
+# Agent instantiation (lazy)
 # ---------------------------------------------------------------------------
 
-_llm = create_llm()
 
-from datetime import UTC
+def _get_agent():
+    global _llm_inst, _synthesis
+    if _synthesis is None:
+        _llm_inst = create_llm()
+        from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
 
-from app.agents.response_synthesizer_agent import ResponseSynthesizerAgent
-
-_synthesis_agent = ResponseSynthesizerAgent(_llm.get_chat_model())
+        _synthesis = ResponseSynthesizerAgent(_llm_inst.get_chat_model())
+    return _synthesis
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +136,7 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
         })}
 
         try:
-            result = await _synthesis_agent.synthesize(query, citations)
+            result = await _get_agent().synthesize(query, citations)
 
             yield {"event": "task_status", "data": json.dumps({
                 "id": task_id,
@@ -152,7 +158,7 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
 
 def _now() -> str:
     from datetime import datetime, timezone
-    return datetime.now(timezone.UTC if hasattr(timezone, "UTC") else UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 async def _error_stream(task_id: str, message: str):

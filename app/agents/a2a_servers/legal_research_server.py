@@ -67,19 +67,27 @@ async def health():
 
 
 # ---------------------------------------------------------------------------
-# Agent instantiation
+# Agent instantiation (lazy)
 # ---------------------------------------------------------------------------
 
-_embeddings = create_embeddings()
-_vector_store = create_vector_store(embeddings=_embeddings)
-_retriever = create_retriever(vector_store=_vector_store)
-_llm = create_llm()
+_embed = None
+_vstore = None
+_ret = None
+_llm_inst = None
+_research = None
 
-from datetime import UTC
 
-from app.agents.legal_research_agent import LegalResearchAgent
+def _get_agent():
+    global _embed, _vstore, _ret, _llm_inst, _research
+    if _research is None:
+        _embed = create_embeddings()
+        _vstore = create_vector_store(embeddings=_embed)
+        _ret = create_retriever(vector_store=_vstore)
+        _llm_inst = create_llm()
+        from app.agents.legal_research_agent import LegalResearchAgent
 
-_research_agent = LegalResearchAgent(_retriever, _llm.get_chat_model())
+        _research = LegalResearchAgent(_ret, _llm_inst.get_chat_model())
+    return _research
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +119,7 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
         })}
 
         try:
-            articles = await _research_agent.run(query)
+            articles = await _get_agent().run(query)
             articles_dicts = [a.to_dict() if hasattr(a, "to_dict") else _article_to_dict(a) for a in articles]
 
             yield {"event": "task_status", "data": json.dumps({
@@ -134,7 +142,7 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
 
 def _now() -> str:
     from datetime import datetime, timezone
-    return datetime.now(timezone.UTC if hasattr(timezone, "UTC") else UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 async def _error_stream(task_id: str, message: str):

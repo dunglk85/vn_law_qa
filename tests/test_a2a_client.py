@@ -94,12 +94,15 @@ class TestInProcessFallbackClient:
 
     @pytest.mark.asyncio
     async def test_unknown_agent(self, fallback_client):
-        with pytest.raises(ValueError, match="Unknown A2A agent"):
-            async for _ in fallback_client.send_task_stream(
-                agent="unknown-agent",
-                payload={},
-            ):
-                pass
+        events = []
+        async for ev in fallback_client.send_task_stream(
+            agent="unknown-agent",
+            payload={},
+        ):
+            events.append(ev)
+        assert len(events) == 1
+        assert events[0].type == "task_status"
+        assert events[0].status["state"] == "failed"
 
     def test_inherits_abc(self, fallback_client):
         assert isinstance(fallback_client, A2AClientRouter)

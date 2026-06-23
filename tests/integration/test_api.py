@@ -95,6 +95,8 @@ def mock_deps():
         mock_ag.return_value = MagicMock()
         mock_a2a.return_value = MagicMock()
 
+        app.state.rate_limiter = AsyncMock()
+
         yield {
             "vector_store": mock_vs,
             "llm": mock_llm,

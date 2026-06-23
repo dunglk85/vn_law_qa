@@ -18,6 +18,12 @@ from sse_starlette.sse import EventSourceResponse
 from app.core.models import Article
 from app.factory import create_embeddings, create_llm, create_vector_store
 
+# Module-level lazy cache
+_embed = None
+_vstore = None
+_llm_inst = None
+_citation = None
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Citation Checker A2A Agent")
@@ -66,18 +72,20 @@ async def health():
 
 
 # ---------------------------------------------------------------------------
-# Agent instantiation
+# Agent instantiation (lazy)
 # ---------------------------------------------------------------------------
 
-_embeddings = create_embeddings()
-_vector_store = create_vector_store(embeddings=_embeddings)
-_llm = create_llm()
 
-from datetime import UTC
+def _get_agent():
+    global _embed, _vstore, _llm_inst, _citation
+    if _citation is None:
+        _embed = create_embeddings()
+        _vstore = create_vector_store(embeddings=_embed)
+        _llm_inst = create_llm()
+        from app.agents.citation_checker_agent import CitationCheckerAgent
 
-from app.agents.citation_checker_agent import CitationCheckerAgent
-
-_citation_agent = CitationCheckerAgent(_vector_store, _llm.get_chat_model())
+        _citation = CitationCheckerAgent(_vstore, _llm_inst.get_chat_model())
+    return _citation
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +143,7 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
         })}
 
         try:
-            citations = await _citation_agent.run(articles, query)
+            citations = await _get_agent().run(articles, query)
             citations_dicts = [c.to_dict() for c in citations]
 
             yield {"event": "task_status", "data": json.dumps({
@@ -158,7 +166,7 @@ async def _handle_send_message(params: dict) -> EventSourceResponse:
 
 def _now() -> str:
     from datetime import datetime, timezone
-    return datetime.now(timezone.UTC if hasattr(timezone, "UTC") else UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 async def _error_stream(task_id: str, message: str):
