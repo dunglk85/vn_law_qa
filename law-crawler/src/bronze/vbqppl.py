@@ -9,6 +9,7 @@ import time
 
 import pandas as pd
 from selenium import webdriver
+from selenium.common.exceptions import InvalidSessionIdException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -41,11 +42,18 @@ def _create_driver() -> webdriver.Chrome:
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-    return webdriver.Chrome(options=options)
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+    driver = webdriver.Chrome(options=options)
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": """Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"""
+    })
+    return driver
 
 
-def fetch_document(driver: webdriver.Chrome, item_id: str) -> str | None:
+def fetch_document(driver: webdriver.Chrome, item_id: str) -> tuple[str | None, webdriver.Chrome]:
     url = f"{VBPL_BASE_URL}/{item_id}"
     for attempt in range(1, MAX_RETRIES + 1):
         try:
@@ -56,6 +64,13 @@ def fetch_document(driver: webdriver.Chrome, item_id: str) -> str | None:
             time.sleep(1)
             soup = BeautifulSoup(driver.page_source, "lxml")
 
+            main_tag = soup.select_one("main")
+            if main_tag:
+                main_text = main_tag.get_text(strip=True)
+                if "Văn bản không tồn tại" in main_text or "404" in main_text[:100]:
+                    logger.info("ItemID %s returned soft 404 (document no longer available), skipping", item_id)
+                    return None, driver
+
             # Try to find document content by common selectors
             content = None
             for sel in ["#fulltext", ".fulltext", ".prov-content", '[class*="content"]', "main"]:
@@ -64,21 +79,31 @@ def fetch_document(driver: webdriver.Chrome, item_id: str) -> str | None:
                     content = str(el)
                     break
             if content:
-                return content
+                return content, driver
             logger.warning("No content found for ItemID %s", item_id)
-            return None
+            return None, driver
+
+        except InvalidSessionIdException:
+            logger.warning("Session invalid on attempt %d/%d for ItemID %s — recreating driver", attempt, MAX_RETRIES, item_id)
+            driver.quit()
+            driver = _create_driver()
+            if attempt < MAX_RETRIES:
+                time.sleep(2 ** attempt)
+            else:
+                logger.error("All retries failed for ItemID %s", item_id)
+                return None, driver
 
         except Exception as exc:
             is_404 = "404" in str(exc)
             logger.warning("Attempt %d/%d failed for ItemID %s: %s", attempt, MAX_RETRIES, item_id, exc)
             if is_404:
                 logger.info("ItemID %s returned 404 (document no longer available), skipping", item_id)
-                return None
+                return None, driver
             if attempt < MAX_RETRIES:
                 time.sleep(2 ** attempt)
             else:
                 logger.error("All retries failed for ItemID %s", item_id)
-                return None
+                return None, driver
 
 
 def main() -> None:
@@ -116,7 +141,7 @@ def main() -> None:
                 continue
 
             logger.info("[%d/%d] Fetching ItemID %s", i, len(item_ids), item_id)
-            content = fetch_document(driver, item_id)
+            content, driver = fetch_document(driver, item_id)
             if content:
                 collected.append({"id": item_id, "noidung": content})
                 already_fetched.add(str(item_id))
