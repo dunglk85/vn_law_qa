@@ -5,11 +5,25 @@
   "pd_demuc_count": 319,
   "pd_demuc_nulls_in": [],
   "pd_demuc_empty_in": [],
-  "pd_chuong_count": 0,
-  "pd_dieu_count": 0,
+  "pd_chuong_count": 1597,
+  "pd_chuong_nulls_in": [],
+  "pd_chuong_empty_in": [],
+  "pd_dieu_count": 67827,
+  "pd_dieu_nulls_in": [
+    "vbqppl_link"
+  ],
+  "pd_dieu_empty_in": [],
   "pd_table_count": 0,
-  "pd_file_count": 0,
-  "pd_muclienquan_count": 0,
+  "pd_file_count": 213,
+  "pd_file_nulls_in": [],
+  "pd_file_empty_in": [],
+  "pd_muclienquan_count": 42,
+  "pd_muclienquan_nulls_in": [],
+  "pd_muclienquan_empty_in": [],
+  "pd_dieu_empty_noidung": 67827,
+  "pd_dieu_no_vbqppl_link": 1881,
+  "pd_lienquan_orphan_refs": 6,
+  "pd_chuong_empty_ten": 0,
   "vb_chimuc_count": 0,
-  "checked_at": "2026-06-24T02:06:27.610455"
+  "checked_at": "2026-06-24T13:47:51.875756"
 }
