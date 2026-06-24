@@ -52,6 +52,10 @@ def ingest_nodes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFra
     tree_nodes = load_json("treeNode.json")
     logger.info("Ingesting tree nodes")
 
+    nodes_by_demuc: dict[str, list[dict]] = {}
+    for n in tree_nodes:
+        nodes_by_demuc.setdefault(n["DeMucID"], []).append(n)
+
     demuc_dir = PHAP_DIEN_DIR / "demuc"
     all_chuong: list[dict] = []
     all_dieu: list[dict] = []
@@ -78,12 +82,12 @@ def ingest_nodes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFra
 
         logger.info("Processing [%d/%d] %s", idx, total, file_name)
         demuc_id = file_name.split(".")[0]
-        demuc_nodes = [n for n in tree_nodes if n["DeMucID"] == demuc_id]
+        demuc_nodes = nodes_by_demuc.get(demuc_id)
         if not demuc_nodes:
             continue
 
         with open(filepath, encoding="utf-8") as f:
-            demuc_html = BeautifulSoup(f.read(), "html.parser")
+            demuc_html = BeautifulSoup(f.read(), "lxml")
 
             demuc_chuong = [n for n in demuc_nodes if n["TEN"].startswith("Chương ")]
         chuong_list: list[dict] = []
@@ -112,7 +116,8 @@ def ingest_nodes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFra
                 "stt": 0, "demuc_id": demuc_id,
             })
 
-        demuc_dieus = [n for n in demuc_nodes if n not in demuc_chuong]
+        chuong_mapc = {c["MAPC"] for c in demuc_chuong}
+        demuc_dieus = [n for n in demuc_nodes if n["MAPC"] not in chuong_mapc]
         stt = 0
         current_chuong_id = None
 
@@ -143,7 +148,7 @@ def ingest_nodes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFra
             if dieu_el.nextSibling:
                 ns = dieu_el.nextSibling
                 ten = ns.get_text().strip() if hasattr(ns, "get_text") else str(ns).strip()
-            ghi_chu_html = dieu_el.parent.nextSibling
+            ghi_chu_html = dieu_el.parent.find_next_sibling()
             vbqppl = ghi_chu_html.text.strip() if ghi_chu_html else None
             vbqppl_link = None
             links = ghi_chu_html.select("a") if ghi_chu_html else []
@@ -213,7 +218,18 @@ def ingest_nodes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFra
 def main() -> None:
     logger.info("=== Bronze: Pháp Điển ingestion ===")
 
+    PHAP_DIEN_DIR.mkdir(parents=True, exist_ok=True)
     BRONZE_PHAP_DIEN.mkdir(parents=True, exist_ok=True)
+
+    required = ["chude.json", "demuc.json", "treeNode.json"]
+    missing = [f for f in required if not (PHAP_DIEN_DIR / f).exists()]
+    if missing:
+        logger.error(
+            "Missing required source files in %s: %s. "
+            "Download from https://phapdien.moj.gov.vn and place them in %s",
+            PHAP_DIEN_DIR, missing, PHAP_DIEN_DIR,
+        )
+        return
 
     df_chude = ingest_chude()
     df_chude.to_parquet(BRONZE_PHAP_DIEN / "chude.parquet", index=False)

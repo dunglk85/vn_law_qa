@@ -8,7 +8,11 @@ import re
 import time
 
 import pandas as pd
-import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
 
 from src.settings import (
@@ -16,9 +20,7 @@ from src.settings import (
     BRONZE_VBQPPL,
     CRAWL_DELAY,
     MAX_RETRIES,
-    REQUEST_TIMEOUT,
     SAVE_EVERY,
-    USER_AGENT,
     VBPL_BASE_URL,
     setup_logging,
 )
@@ -33,33 +35,45 @@ def get_item_id(url: str | None) -> str | None:
     return match.group(1) if match else None
 
 
-def _create_session() -> requests.Session:
-    session = requests.Session()
-    session.headers.update({"User-Agent": USER_AGENT})
-    return session
+def _create_driver() -> webdriver.Chrome:
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+    return webdriver.Chrome(options=options)
 
 
-def fetch_document(session: requests.Session, item_id: str) -> str | None:
-    url = f"{VBPL_BASE_URL}?ItemID={item_id}"
+def fetch_document(driver: webdriver.Chrome, item_id: str) -> str | None:
+    url = f"{VBPL_BASE_URL}/{item_id}"
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            response = session.get(url, timeout=REQUEST_TIMEOUT)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.content, "html.parser")
-            div_text = soup.find_all("div", class_="fulltext")
-            if not div_text:
-                logger.warning("No fulltext div for ItemID %s", item_id)
-                return None
-            inner_divs = div_text[0].find_all("div")
-            if len(inner_divs) < 2:
-                logger.warning(
-                    "Unexpected HTML structure for ItemID %s: %d inner divs",
-                    item_id, len(inner_divs),
-                )
-                return None
-            return str(inner_divs[1])
-        except requests.RequestException as exc:
+            driver.get(url)
+            WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.TAG_NAME, "main"))
+            )
+            time.sleep(1)
+            soup = BeautifulSoup(driver.page_source, "lxml")
+
+            # Try to find document content by common selectors
+            content = None
+            for sel in ["#fulltext", ".fulltext", ".prov-content", '[class*="content"]', "main"]:
+                el = soup.select_one(sel)
+                if el and len(el.get_text(strip=True)) > 200:
+                    content = str(el)
+                    break
+            if content:
+                return content
+            logger.warning("No content found for ItemID %s", item_id)
+            return None
+
+        except Exception as exc:
+            is_404 = "404" in str(exc)
             logger.warning("Attempt %d/%d failed for ItemID %s: %s", attempt, MAX_RETRIES, item_id, exc)
+            if is_404:
+                logger.info("ItemID %s returned 404 (document no longer available), skipping", item_id)
+                return None
             if attempt < MAX_RETRIES:
                 time.sleep(2 ** attempt)
             else:
@@ -84,9 +98,6 @@ def main() -> None:
     item_ids = links.apply(get_item_id).dropna().drop_duplicates()
     logger.info("Found %d unique ItemIDs to crawl", len(item_ids))
 
-    # ── C1 fix: resume from existing parquet ─────────────────────────────────
-    # Load any previously crawled documents so a crashed run can continue
-    # without re-fetching IDs that were already successfully retrieved.
     existing_path = BRONZE_VBQPPL / "vbpl.parquet"
     if existing_path.exists():
         existing_df = pd.read_parquet(existing_path)
@@ -96,18 +107,16 @@ def main() -> None:
     else:
         collected = []
         already_fetched = set()
-    # ─────────────────────────────────────────────────────────────────────────
 
-    session = _create_session()
+    driver = _create_driver()
     try:
         new_count = 0
         for i, item_id in enumerate(item_ids, 1):
             if str(item_id) in already_fetched:
-                logger.debug("[%d/%d] Skipping already-fetched ItemID %s", i, len(item_ids), item_id)
                 continue
 
             logger.info("[%d/%d] Fetching ItemID %s", i, len(item_ids), item_id)
-            content = fetch_document(session, item_id)
+            content = fetch_document(driver, item_id)
             if content:
                 collected.append({"id": item_id, "noidung": content})
                 already_fetched.add(str(item_id))
@@ -124,7 +133,7 @@ def main() -> None:
                     shutil.move(str(tmp_path), str(existing_path))
                 logger.info("Saved checkpoint at %d total documents (%d new)", len(collected), new_count)
 
-            time.sleep(CRAWL_DELAY)  # I4 fix: configurable via LAW_CRAWL_DELAY env / params.yaml crawl_delay
+            time.sleep(CRAWL_DELAY)
 
         if new_count > 0 and collected:
             df_save = pd.DataFrame(collected)
@@ -138,7 +147,7 @@ def main() -> None:
 
         logger.info("Bronze VBQPPL done: %d new documents crawled (%d total)", new_count, len(collected))
     finally:
-        session.close()
+        driver.quit()
 
 
 if __name__ == "__main__":

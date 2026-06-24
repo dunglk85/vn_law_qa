@@ -70,7 +70,7 @@ SILVER_VBQPPL = SILVER / "vbqppl"
 GOLD = DATA / "gold"
 
 # VBQPPL web crawl settings
-VBPL_BASE_URL = "https://vbpl.vn/TW/Pages/vbpq-toanvan.aspx"
+VBPL_BASE_URL = "https://vbpl.vn/van-ban/chi-tiet"
 
 # Config resolution: params.yaml (DVC) → env var → hardcoded default
 def _get_int(key: str, default: int) -> int:
