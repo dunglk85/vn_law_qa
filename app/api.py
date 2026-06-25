@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app.auth.dependencies import require_role
+from app.auth.dependencies import require_api_key
 from app.auth.router import router as auth_router
 from app.config import config
 from app.core.agentic_service import create_agentic_service
@@ -257,7 +257,7 @@ def _get_client_ip(request: Request) -> str:
 async def ask(
     q: AskRequest,
     request: Request,
-    _user: dict = Depends(require_role("admin", "viewer")),
+    _api_key: str = Depends(require_api_key),
 ) -> dict:
     from app.core.token_tracker import reset_tracker
 
@@ -271,8 +271,8 @@ async def ask(
 
     tracker = reset_tracker()
 
-    tenant_id = _user.get("tenant_id") if isinstance(_user, dict) else None
-    session_id = q.session_id or _user.get("sub", "anonymous") if isinstance(_user, dict) else "anonymous"
+    tenant_id = None
+    session_id = q.session_id or "anonymous"
 
     quality_score = None
     tenant_sources = None

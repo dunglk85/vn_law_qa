@@ -89,6 +89,7 @@ class AppConfig:
     openai_api_key: str = _str_env("OPENAI_API_KEY", "")
     cohere_api_key: str = _str_env("CO_API_KEY", "")
     langsmith_api_key: str = _str_env("LANGSMITH_API_KEY", "")
+    app_api_key: str = _str_env("API_KEY", "")
 
     # ------------------------------------------------------------------
     # Model names
