@@ -184,6 +184,21 @@ class AppConfig:
     langsmith_tracing: bool = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
     langsmith_project: str = _str_env("LANGSMITH_PROJECT", "company-knowledge-assistant")
 
+    # ------------------------------------------------------------------
+    # Pipeline stage config (agentic pipeline per-stage model control)
+    # ------------------------------------------------------------------
+    pipeline_stage_order: str = _str_env(
+        "PIPELINE_STAGE_ORDER",
+        "router,planner,reasoner,tool_caller,code_writer,evaluator",
+    )
+
+    pipeline_model_router: str = _str_env("PIPELINE_MODEL_ROUTER", "")
+    pipeline_model_planner: str = _str_env("PIPELINE_MODEL_PLANNER", "")
+    pipeline_model_reasoner: str = _str_env("PIPELINE_MODEL_REASONER", "")
+    pipeline_model_tool_caller: str = _str_env("PIPELINE_MODEL_TOOL_CALLER", "")
+    pipeline_model_code_writer: str = _str_env("PIPELINE_MODEL_CODE_WRITER", "")
+    pipeline_model_evaluator: str = _str_env("PIPELINE_MODEL_EVALUATOR", "")
+
 
 # Singleton — import this everywhere instead of reading os.getenv directly
 config = AppConfig()

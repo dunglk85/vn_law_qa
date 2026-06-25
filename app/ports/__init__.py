@@ -3,6 +3,7 @@ from .cache import CachePort
 from .document_loader import DocumentLoaderPort
 from .embeddings import EmbeddingsPort
 from .llm import LLMPort
+from .pipeline_stage import PipelineStagePort, StageInput, StageOutput
 from .query_transformer import QueryTransformerPort
 from .rate_limiter import RateLimiterPort
 from .reranker import RerankerPort
@@ -15,10 +16,13 @@ __all__ = [
     "DocumentLoaderPort",
     "EmbeddingsPort",
     "LLMPort",
+    "PipelineStagePort",
     "QueryTransformerPort",
     "RateLimiterPort",
     "RerankerPort",
     "RetrieverPort",
     "SessionStorePort",
+    "StageInput",
+    "StageOutput",
     "VectorStorePort",
 ]

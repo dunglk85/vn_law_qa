@@ -14,11 +14,14 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
+from langchain_core.language_models import BaseChatModel
+
 from app.config import config
 from app.ports.cache import CachePort
 from app.ports.document_loader import DocumentLoaderPort
 from app.ports.embeddings import EmbeddingsPort
 from app.ports.llm import LLMPort
+from app.ports.pipeline_stage import PipelineStagePort
 from app.ports.query_transformer import QueryTransformerPort
 from app.ports.rate_limiter import RateLimiterPort
 from app.ports.reranker import RerankerPort
@@ -234,6 +237,12 @@ def create_llm() -> LLMPort:
                     api_key=config.openai_api_key)
 
 
+def create_llm_with_model(model: str) -> LLMPort:
+    return _resolve("llm", config.llm_type,
+                    model=model,
+                    api_key=config.openai_api_key)
+
+
 def create_reranker(embeddings: EmbeddingsPort | None = None) -> RerankerPort:
     kw: dict = dict(model=config.reranker_model, top_n=config.reranker_top_n)
 
@@ -437,3 +446,52 @@ def create_rate_limiter() -> RateLimiterPort:
         max_requests=config.rate_limit_max,
         window_seconds=config.rate_limit_window,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Pipeline stages (agentic pipeline per-stage model control)                  #
+# --------------------------------------------------------------------------- #
+
+
+@_register("pipeline_stage", "router")
+def _create_router_stage(chat_model: BaseChatModel) -> PipelineStagePort:
+    from app.adapters.stages.router_stage import RouterStage
+    return RouterStage(chat_model)
+
+
+@_register("pipeline_stage", "planner")
+def _create_planner_stage(chat_model: BaseChatModel) -> PipelineStagePort:
+    from app.adapters.stages.planner_stage import PlannerStage
+    return PlannerStage(chat_model)
+
+
+@_register("pipeline_stage", "reasoner")
+def _create_reasoner_stage(chat_model: BaseChatModel) -> PipelineStagePort:
+    from app.adapters.stages.reasoner_stage import ReasonerStage
+    return ReasonerStage(chat_model)
+
+
+@_register("pipeline_stage", "tool_caller")
+def _create_tool_caller_stage(chat_model: BaseChatModel) -> PipelineStagePort:
+    from app.adapters.stages.tool_caller_stage import ToolCallerStage
+    return ToolCallerStage(chat_model)
+
+
+@_register("pipeline_stage", "code_writer")
+def _create_code_writer_stage(chat_model: BaseChatModel) -> PipelineStagePort:
+    from app.adapters.stages.code_writer_stage import CodeWriterStage
+    return CodeWriterStage(chat_model)
+
+
+@_register("pipeline_stage", "evaluator")
+def _create_evaluator_stage(chat_model: BaseChatModel) -> PipelineStagePort:
+    from app.adapters.stages.evaluator_stage import EvaluatorStage
+    return EvaluatorStage(chat_model)
+
+
+def create_pipeline_stage(name: str, chat_model: BaseChatModel) -> PipelineStagePort:
+    """Resolve a single pipeline stage by name with the given chat model."""
+    return _resolve("pipeline_stage", name, chat_model=chat_model)
+
+
+
