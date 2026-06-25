@@ -171,7 +171,7 @@ class AgenticService:
                 ),
                 timeout=config.agent_timeout,
             )
-        except (asyncio.TimeoutError, OSError):
+        except (TimeoutError, OSError):
             logger.error("Supervisor timed out after %.0fs", config.agent_timeout)
             raise
 

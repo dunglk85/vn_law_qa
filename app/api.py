@@ -303,7 +303,7 @@ async def ask(
                     tenant_id=tenant_id,
                 )
                 reasoning_steps = []
-    except (asyncio.TimeoutError, OSError):
+    except (TimeoutError, OSError):
         elapsed = time.perf_counter() - start
         logger.error(
             "/ask timed out trace_id=%s after %.0fs tokens=%d",
