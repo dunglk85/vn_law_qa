@@ -201,7 +201,7 @@ class AppConfig:
 
     pipeline_prompts_path: str = _str_env("PIPELINE_PROMPTS_PATH", "config/prompts.yaml")
     pipeline_prompts_cache_ttl: int = _int_env("PIPELINE_PROMPTS_CACHE_TTL", 60)
-    # seconds between re-reading prompts.yaml; 0 = always re-read
+    # seconds between re-reading prompts.yaml; 0 = always re-read (no cache)
 
 
 # Singleton — import this everywhere instead of reading os.getenv directly

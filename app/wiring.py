@@ -26,7 +26,7 @@ def _load_prompts() -> dict[str, str]:
 
     ttl = config.pipeline_prompts_cache_ttl
     now = time.monotonic()
-    if _LOADED_PROMPTS is not None and (ttl == 0 or now - _LAST_LOADED < ttl):
+    if _LOADED_PROMPTS is not None and (ttl > 0 and now - _LAST_LOADED < ttl):
         return _LOADED_PROMPTS
 
     path = Path(config.pipeline_prompts_path)
@@ -80,9 +80,16 @@ def create_pipeline_orchestrator(default_llm):
 
         stages[name] = create_pipeline_stage(name, chat_model, config=_stage_config(name))
 
+        logger.info(
+            "Pipeline stage %s: model=%s, stage_type=%s",
+            name,
+            model_override or type(default_llm).__name__,
+            type(stages[name]).__name__,
+        )
+
     logger.info(
         "Pipeline orchestrator built: %d stages (%s)",
         len(stages),
-        ", ".join(f"{n}={type(s).__name__}" for n, s in stages.items()),
+        ", ".join(stages.keys()),
     )
     return PipelineOrchestrator(stages, stage_order)

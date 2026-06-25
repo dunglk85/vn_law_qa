@@ -16,7 +16,7 @@ class PipelineOrchestrator:
         self._order = stage_order
 
     async def run(self, user_input: str, context: dict[str, Any] | None = None) -> str:
-        ctx = context or {}
+        ctx = dict(context or {})
         current = StageInput(prompt=user_input, context=ctx)
 
         for name in self._order:
@@ -40,7 +40,7 @@ class PipelineOrchestrator:
         user_input: str,
         context: dict[str, Any] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        ctx = context or {}
+        ctx = dict(context or {})
         current = StageInput(prompt=user_input, context=ctx)
 
         for name in self._order:
