@@ -20,6 +20,11 @@ class _SyncRetriever(BaseRetriever):
     _store: PGVector
     _search_kwargs: dict
 
+    def __init__(self, _store: PGVector, _search_kwargs: dict, **kwargs):
+        super().__init__(**kwargs)
+        self._store = _store
+        self._search_kwargs = _search_kwargs
+
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
     ) -> list[Document]:
