@@ -454,44 +454,44 @@ def create_rate_limiter() -> RateLimiterPort:
 
 
 @_register("pipeline_stage", "router")
-def _create_router_stage(chat_model: BaseChatModel) -> PipelineStagePort:
+def _create_router_stage(chat_model: BaseChatModel, config: dict | None = None) -> PipelineStagePort:
     from app.adapters.stages.router_stage import RouterStage
-    return RouterStage(chat_model)
+    return RouterStage(chat_model, config)
 
 
 @_register("pipeline_stage", "planner")
-def _create_planner_stage(chat_model: BaseChatModel) -> PipelineStagePort:
+def _create_planner_stage(chat_model: BaseChatModel, config: dict | None = None) -> PipelineStagePort:
     from app.adapters.stages.planner_stage import PlannerStage
-    return PlannerStage(chat_model)
+    return PlannerStage(chat_model, config)
 
 
 @_register("pipeline_stage", "reasoner")
-def _create_reasoner_stage(chat_model: BaseChatModel) -> PipelineStagePort:
+def _create_reasoner_stage(chat_model: BaseChatModel, config: dict | None = None) -> PipelineStagePort:
     from app.adapters.stages.reasoner_stage import ReasonerStage
-    return ReasonerStage(chat_model)
+    return ReasonerStage(chat_model, config)
 
 
 @_register("pipeline_stage", "tool_caller")
-def _create_tool_caller_stage(chat_model: BaseChatModel) -> PipelineStagePort:
+def _create_tool_caller_stage(chat_model: BaseChatModel, config: dict | None = None) -> PipelineStagePort:
     from app.adapters.stages.tool_caller_stage import ToolCallerStage
-    return ToolCallerStage(chat_model)
+    return ToolCallerStage(chat_model, config)
 
 
 @_register("pipeline_stage", "code_writer")
-def _create_code_writer_stage(chat_model: BaseChatModel) -> PipelineStagePort:
+def _create_code_writer_stage(chat_model: BaseChatModel, config: dict | None = None) -> PipelineStagePort:
     from app.adapters.stages.code_writer_stage import CodeWriterStage
-    return CodeWriterStage(chat_model)
+    return CodeWriterStage(chat_model, config)
 
 
 @_register("pipeline_stage", "evaluator")
-def _create_evaluator_stage(chat_model: BaseChatModel) -> PipelineStagePort:
+def _create_evaluator_stage(chat_model: BaseChatModel, config: dict | None = None) -> PipelineStagePort:
     from app.adapters.stages.evaluator_stage import EvaluatorStage
-    return EvaluatorStage(chat_model)
+    return EvaluatorStage(chat_model, config)
 
 
-def create_pipeline_stage(name: str, chat_model: BaseChatModel) -> PipelineStagePort:
-    """Resolve a single pipeline stage by name with the given chat model."""
-    return _resolve("pipeline_stage", name, chat_model=chat_model)
+def create_pipeline_stage(name: str, chat_model: BaseChatModel, config: dict | None = None) -> PipelineStagePort:
+    """Resolve a single pipeline stage by name with the given chat model and config."""
+    return _resolve("pipeline_stage", name, chat_model=chat_model, config=config)
 
 
 

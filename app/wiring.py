@@ -14,11 +14,21 @@ from app.ports.pipeline_stage import PipelineStagePort
 logger = logging.getLogger(__name__)
 
 
+def _stage_config(name: str) -> dict:
+    """Build a config dict for a pipeline stage from env vars."""
+    cfg: dict = {}
+    prompt = getattr(config, f"pipeline_prompt_{name}", "")
+    if prompt:
+        cfg["system_prompt"] = prompt
+    return cfg
+
+
 def create_pipeline_orchestrator(default_llm):
-    """Build the pipeline, resolving each stage's model independently.
+    """Build the pipeline, resolving each stage's model + prompt independently.
 
     Env var ``PIPELINE_MODEL_<STAGE>`` overrides the model per stage.
-    Falls back to the default LLM if not set.
+    Env var ``PIPELINE_PROMPT_<STAGE>`` overrides the system prompt per stage.
+    Falls back to defaults when not set.
     """
     from app.core.pipeline_orchestrator import PipelineOrchestrator
 
@@ -34,7 +44,7 @@ def create_pipeline_orchestrator(default_llm):
         else:
             chat_model = default_llm.get_chat_model()
 
-        stages[name] = create_pipeline_stage(name, chat_model)
+        stages[name] = create_pipeline_stage(name, chat_model, config=_stage_config(name))
 
     logger.info(
         "Pipeline orchestrator built: %d stages (%s)",
