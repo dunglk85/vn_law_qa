@@ -224,7 +224,7 @@ async def health() -> dict:
 
 
 @app.get("/metrics")
-async def metrics(_user: dict = Depends(require_role("admin"))) -> dict:
+async def metrics(_api_key: str = Depends(require_api_key)) -> dict:
     """Expose application metrics for monitoring and alerting (admin only)."""
     from app.core.token_tracker import get_tracker
 
