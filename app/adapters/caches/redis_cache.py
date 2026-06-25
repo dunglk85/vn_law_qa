@@ -23,13 +23,17 @@ class RedisCacheAdapter(CachePort):
         self._redis_url = redis_url
         self._embeddings = embeddings_port.get_embeddings()
         self._distance_threshold = distance_threshold
+        self._cache_instance: RedisSemanticCache | None = None
 
     def apply(self) -> None:
         """Activate Redis semantic cache globally for all LangChain LLM calls."""
-        cache = RedisSemanticCache(
+        if self._cache_instance is not None:
+            logger.info("CACHE: Redis semantic cache already active, skipping re-init.")
+            return
+        self._cache_instance = RedisSemanticCache(
             redis_url=self._redis_url,
             embeddings=self._embeddings,
             distance_threshold=self._distance_threshold,
         )
-        set_llm_cache(cache)
+        set_llm_cache(self._cache_instance)
         logger.info("CACHE: Redis semantic cache activated.")

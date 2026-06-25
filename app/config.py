@@ -135,7 +135,7 @@ class AppConfig:
     n_results_per_vector: int = _int_env("N_RESULTS_PER_VECTOR", 5)
     top_k_research: int = _int_env("TOP_K_RESEARCH", 5)
     top_k_llm_score: int = _int_env("TOP_K_LLM_SCORE", 8)
-    hyde_enabled: bool = os.getenv("HYDE_ENABLED", "true").lower() == "true"
+    hyde_enabled: bool = os.getenv("HYDE_ENABLED", "true").strip().lower() in {"true", "yes", "1", "on"}
     subquery_count: int = _int_env("SUBQUERY_COUNT", 3)
     relevance_threshold: float = _float_env("RELEVANCE_THRESHOLD", 0.5)
 
@@ -155,17 +155,17 @@ class AppConfig:
     # ------------------------------------------------------------------
     # Auth / JWT
     # ------------------------------------------------------------------
-    jwt_secret: str = _str_env("JWT_SECRET", "change-me-in-production")
+    jwt_secret: str = _str_env("JWT_SECRET", "")
     jwt_algorithm: str = _str_env("JWT_ALGORITHM", "HS256")
     access_token_expire_minutes: int = _int_env("ACCESS_TOKEN_EXPIRE_MINUTES", 30)
     refresh_token_expire_days: int = _int_env("REFRESH_TOKEN_EXPIRE_DAYS", 7)
-    admin_username: str = _str_env("ADMIN_USERNAME", "admin")
-    admin_password: str = _str_env("ADMIN_PASSWORD", "admin")
+    admin_username: str = _str_env("ADMIN_USERNAME", "")
+    admin_password: str = _str_env("ADMIN_PASSWORD", "")
 
     # ------------------------------------------------------------------
     # MCP (Model Context Protocol)
     # ------------------------------------------------------------------
-    mcp_enabled: bool = os.getenv("MCP_ENABLED", "false").lower() == "true"
+    mcp_enabled: bool = os.getenv("MCP_ENABLED", "false").strip().lower() in {"true", "yes", "1", "on"}
     mcp_server_timeout: int = _int_env("MCP_SERVER_TIMEOUT", 30)
     mcp_max_restarts: int = _int_env("MCP_MAX_RESTARTS", 3)
 
@@ -181,7 +181,7 @@ class AppConfig:
     # ------------------------------------------------------------------
     # LangSmith (Observability)
     # ------------------------------------------------------------------
-    langsmith_tracing: bool = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
+    langsmith_tracing: bool = os.getenv("LANGCHAIN_TRACING_V2", "false").strip().lower() in {"true", "yes", "1", "on"}
     langsmith_project: str = _str_env("LANGSMITH_PROJECT", "company-knowledge-assistant")
 
     # ------------------------------------------------------------------
@@ -208,16 +208,30 @@ class AppConfig:
 config = AppConfig()
 
 # --- Startup validation ---
-if config.jwt_secret == "change-me-in-production":
+if not config.jwt_secret:
     from app.exceptions import ConfigurationError
     raise ConfigurationError(
-        "JWT_SECRET is using the default value 'change-me-in-production'. "
+        "JWT_SECRET is not set. "
         "Set a strong secret via the JWT_SECRET env var."
     )
 
-if config.admin_password == "admin":
+if not config.admin_username:
     from app.exceptions import ConfigurationError
     raise ConfigurationError(
-        "ADMIN_PASSWORD is 'admin'. "
+        "ADMIN_USERNAME is not set. "
+        "Set a username via the ADMIN_USERNAME env var."
+    )
+
+if not config.admin_password:
+    from app.exceptions import ConfigurationError
+    raise ConfigurationError(
+        "ADMIN_PASSWORD is not set. "
         "Set a strong password via the ADMIN_PASSWORD env var."
+    )
+
+if config.jwt_algorithm not in {"HS256", "HS384", "HS512"}:
+    from app.exceptions import ConfigurationError
+    raise ConfigurationError(
+        f"JWT_ALGORITHM='{config.jwt_algorithm}' is not allowed. "
+        "Must be one of: HS256, HS384, HS512"
     )

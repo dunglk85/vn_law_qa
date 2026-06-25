@@ -20,9 +20,14 @@ class _HybridInterleavingRetriever(BaseRetriever):
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
     ) -> list[Document]:
-        self._sparse_retriever.k = self._k * 2
-        dense_docs = self._dense_retriever.invoke(query)
-        sparse_docs = self._sparse_retriever.invoke(query)
+        sparse_k = self._k * 2
+        original_k = self._sparse_retriever.k
+        try:
+            self._sparse_retriever.k = sparse_k
+            dense_docs = self._dense_retriever.invoke(query)
+            sparse_docs = self._sparse_retriever.invoke(query)
+        finally:
+            self._sparse_retriever.k = original_k
 
         interleaved: list[Document] = []
         seen_hashes: set[str] = set()
@@ -71,7 +76,6 @@ class HybridInterleavingRetrieverAdapter(RetrieverPort):
     def __init__(self, vector_store: VectorStorePort, k: int = 5) -> None:
         self._vector_store = vector_store
         self._k = k
-        self._retrieval_k = k
         self._bm25: BM25Retriever | None = None
 
     def build_index(self, documents: list[Document]) -> None:
@@ -80,7 +84,7 @@ class HybridInterleavingRetrieverAdapter(RetrieverPort):
     def get_retriever(self, search_kwargs: dict | None = None) -> BaseRetriever:
         if self._bm25 is None:
             raise RuntimeError("HybridInterleavingRetrieverAdapter: index not built. Call build_index() first.")
-        kwargs = search_kwargs or {"k": self._retrieval_k}
+        kwargs = search_kwargs or {"k": self._k}
         vector_store_retriever = self._vector_store.as_retriever(search_kwargs=kwargs)
         wrapper = _HybridInterleavingRetriever()
         wrapper._dense_retriever = vector_store_retriever

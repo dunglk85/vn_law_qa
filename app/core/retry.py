@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ async def retry_with_backoff(
     base_delay: float = 1.0,
     max_delay: float = 10.0,
     desc: str = "operation",
-) -> any:
+) -> Any:
     last_exc = None
     for attempt in range(max_attempts):
         try:
@@ -40,7 +41,7 @@ async def retry_with_backoff(
                 raise
             if attempt < max_attempts - 1:
                 delay = min(base_delay * (2 ** attempt), max_delay)
-                jitter = random.uniform(0, delay * 0.1)
+                jitter = random.uniform(0, delay)
                 total_delay = delay + jitter
                 logger.warning(
                     "%s attempt %d/%d failed: %s. Retrying in %.2fs",

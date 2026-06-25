@@ -16,7 +16,6 @@ class _BM25LangChainRetriever(BaseRetriever):
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
     ) -> list[Document]:
-        self._bm25.k = self._k
         return self._bm25.invoke(query)
 
     async def _aget_relevant_documents(
@@ -42,7 +41,5 @@ class BM25RetrieverAdapter(RetrieverPort):
     def get_retriever(self, search_kwargs: dict | None = None) -> BaseRetriever:
         if self._bm25 is None:
             raise RuntimeError("BM25RetrieverAdapter: index not built. Call build_index() first.")
-        wrapper = _BM25LangChainRetriever()
-        wrapper._bm25 = self._bm25
-        wrapper._k = self._k
-        return wrapper
+        retriever = _BM25LangChainRetriever(_bm25=self._bm25, _k=self._k)
+        return retriever

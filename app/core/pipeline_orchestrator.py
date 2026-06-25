@@ -46,20 +46,26 @@ class PipelineOrchestrator:
         for name in self._order:
             stage = self._stages.get(name)
             if stage is None:
+                logger.warning("Stage '%s' not configured, skipping", name)
                 continue
 
             yield {"type": "stage_start", "stage": name}
 
-            tokens: list[str] = []
-            async for token in stage.stream(current):
-                tokens.append(token)
-                yield {"type": "token", "stage": name, "token": token}
+            try:
+                tokens: list[str] = []
+                async for token in stage.stream(current):
+                    tokens.append(token)
+                    yield {"type": "token", "stage": name, "token": token}
 
-            full = "".join(tokens)
-            ctx[f"{name}_output"] = full
-            current = StageInput(prompt=full, context=ctx, previous_output=full)
+                full = "".join(tokens)
+                ctx[f"{name}_output"] = full
+                current = StageInput(prompt=full, context=ctx, previous_output=full)
 
-            yield {"type": "stage_end", "stage": name, "output": full}
+                yield {"type": "stage_end", "stage": name, "output": full}
+            except Exception as exc:
+                logger.error("Stage '%s' failed during streaming: %s", name, exc)
+                yield {"type": "stage_error", "stage": name, "error": str(exc)}
+                return
 
     @property
     def stage_order(self) -> list[str]:

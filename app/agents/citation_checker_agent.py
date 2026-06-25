@@ -131,9 +131,9 @@ class CitationCheckerAgent:
             data = parse_json(r.content, "cross_reference")
         except Exception as exc:
             logger.error("Gate 3 LLM failed: %s", exc)
-            gate_log.append("Gate 3: LLM error, skipped")
+            gate_log.append("Gate 3: LLM error, treating as uncertain")
             return {"verified_citations": citations, "contradictions": [],
-                    "consistency_score": 1.0, "gate_log": gate_log}
+                    "consistency_score": 0.5, "gate_log": gate_log}
 
         to_remove: set[str] = set()
         contradictions: list[str] = []

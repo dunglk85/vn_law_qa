@@ -133,19 +133,19 @@ class TestSupervisorHeuristicScore:
 
     def test_heuristic_score_response_only(self, supervisor):
         score = supervisor._heuristic_score("This is a response", [])
-        assert score == 0.4
+        assert score == 0.3
 
     def test_heuristic_score_response_with_citations(self, supervisor):
         citations = [MagicMock(article_id="1", content="test")]
         score = supervisor._heuristic_score("This is a response", citations)
-        assert score == 0.7
+        assert score == 0.5
 
     def test_heuristic_score_response_with_article_reference(self, supervisor):
         citations = [MagicMock(article_id="1", content="test")]
         score = supervisor._heuristic_score("Response mentions 1", citations)
-        assert score == pytest.approx(0.9)
+        assert score == pytest.approx(0.7)
 
     def test_heuristic_score_long_response(self, supervisor):
         citations = [MagicMock(article_id="1", content="test")]
         score = supervisor._heuristic_score("A" * 150 + " 1", citations)
-        assert score == pytest.approx(1.0)
+        assert score == pytest.approx(0.8)

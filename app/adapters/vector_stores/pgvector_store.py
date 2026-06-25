@@ -49,9 +49,11 @@ def _create_hnsw_index_sync(
                 return
 
             cur.execute(
-                f'CREATE INDEX "{index_name}" '
-                "ON langchain_pg_embedding USING hnsw (embedding vector_cosine_ops) "
-                "WITH (m = %s, ef_construction = %s)",
+                psycopg.sql.SQL(
+                    'CREATE INDEX {} '
+                    "ON langchain_pg_embedding USING hnsw (embedding vector_cosine_ops) "
+                    "WITH (m = %s, ef_construction = %s)"
+                ).format(psycopg.sql.Identifier(index_name)),
                 (hnsw_m, hnsw_ef_construction),
             )
             conn.commit()
@@ -76,14 +78,13 @@ def _create_ivfflat_index_sync(
                 return
 
             cur.execute(
-                f'CREATE INDEX "{index_name}" '
-                "ON langchain_pg_embedding USING ivfflat (embedding vector_cosine_ops) "
-                "WITH (lists = %s)",
+                psycopg.sql.SQL(
+                    'CREATE INDEX {} '
+                    "ON langchain_pg_embedding USING ivfflat (embedding vector_cosine_ops) "
+                    "WITH (lists = %s)"
+                ).format(psycopg.sql.Identifier(index_name)),
                 (ivfflat_lists,),
             )
-            conn.commit()
-
-            cur.execute("SET ivfflat.probes = %s", (ivfflat_probes,))
             conn.commit()
             logger.info(
                 "PGVECTOR: IVFFlat index '%s' created successfully (lists=%d, probes=%d).",
@@ -151,15 +152,6 @@ class PGVectorStoreAdapter(VectorStorePort):
         filter: dict | None = None,
     ) -> list[Document]:
         store = self._get_store()
-        if self._index_type == "hnsw":
-            conn_str = self._connection_string.replace("postgresql+psycopg://", "postgresql://")
-            try:
-                with psycopg.connect(conn_str) as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("SET hnsw.ef_search = %s", (self._hnsw_ef_search,))
-                        conn.commit()
-            except Exception as exc:
-                logger.warning("PGVECTOR: Failed to set hnsw.ef_search: %s", exc)
         return await asyncio.to_thread(store.similarity_search, query, k, filter)
 
     async def get_documents_by_ids(self, ids: list[str]) -> list[Document]:

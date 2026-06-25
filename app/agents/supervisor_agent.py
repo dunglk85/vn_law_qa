@@ -350,7 +350,7 @@ class SupervisorAgent:
             step["duration_ms"] = round((time.time() - node_start) * 1000)
             steps.append(step)
             return {"final_response": result["response"], "error": None,
-                    "retry_count": state.get("retry_count", 0), "reasoning_steps": steps}
+                    "retry_count": state.get("retry_count", 0) + 1, "reasoning_steps": steps}
         except Exception as exc:
             logger.error("ResponseSynthesizerAgent failed: %s", exc)
             step = self._step("supervisor", "response_synthesis",
@@ -365,14 +365,16 @@ class SupervisorAgent:
     def _heuristic_score(self, response: str, citations: list[Citation]) -> float:
         score = 0.0
         if response:
-            score += 0.4
-        if citations:
             score += 0.3
+        if citations:
+            score += 0.2
         if any(c.article_id in response for c in citations):
             score += 0.2
         if len(response) > 100:
             score += 0.1
-        return score
+        if len(response) > 500:
+            score += 0.1
+        return min(score, 1.0)
 
     async def _llm_quality_check(self, query: str, response: str, citations: list[Citation]) -> dict:
         citation_context = format_citations(citations) if citations else "(none)"
@@ -449,7 +451,7 @@ class SupervisorAgent:
     def route_after_citation_check(self, state: SupervisorState) -> str:
         if state.get("error"):
             if state.get("retry_count", 0) >= MAX_RETRIES:
-                logger.warning("Max retries on citation check, proceeding to synthesis")
+                logger.warning("Max retries on citation check, proceeding to synthesis with error state")
                 return "synthesis"
             return "error"
         if not state.get("verified_citations"):

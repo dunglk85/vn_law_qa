@@ -24,10 +24,10 @@ async def get_current_user(
     try:
         payload = decode_token(credentials.credentials)
         validate_claims(payload)
-    except ValueError as e:
+    except ValueError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
+            detail="Invalid or expired token",
         )
     return payload
 
@@ -35,7 +35,7 @@ async def get_current_user(
 def require_role(*allowed_roles: str):
     async def _check(current_user: dict = Depends(get_current_user)) -> dict:
         user_roles = current_user.get("roles", [])
-        if not user_roles:
+        if not isinstance(user_roles, list) or not user_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No roles assigned",

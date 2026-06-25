@@ -21,7 +21,7 @@ from app.auth.router import router as auth_router
 from app.config import config
 from app.core.agentic_service import create_agentic_service
 from app.core.rag_service import RAGService
-from app.exceptions import AppError
+from app.exceptions import AppError, RateLimitError
 from app.factory import (
     create_a2a_client,
     create_cache,
@@ -211,8 +211,8 @@ async def health() -> dict:
 
 
 @app.get("/metrics")
-async def metrics() -> dict:
-    """Expose application metrics for monitoring and alerting."""
+async def metrics(_user: dict = Depends(require_role("admin"))) -> dict:
+    """Expose application metrics for monitoring and alerting (admin only)."""
     from app.core.token_tracker import get_tracker
 
     tracker = get_tracker()
@@ -231,7 +231,7 @@ def _get_client_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         ip = forwarded.split(",")[0].strip()
-        if ip:
+        if ip and ip.count(".") == 3:
             return ip
     return request.client.host if request.client else "unknown"
 
@@ -246,10 +246,7 @@ async def ask(
 
     client_ip = _get_client_ip(request)
     if not await request.app.state.rate_limiter.check(client_ip):
-        return JSONResponse(
-            {"ok": False, "message": "Rate limit exceeded. Try again later."},
-            status_code=429,
-        )
+        raise RateLimitError()
 
     trace_id = str(uuid.uuid4())
     start = time.perf_counter()
@@ -289,7 +286,7 @@ async def ask(
                     tenant_id=tenant_id,
                 )
                 reasoning_steps = []
-    except TimeoutError:
+    except (asyncio.TimeoutError, OSError):
         elapsed = time.perf_counter() - start
         logger.error(
             "/ask timed out trace_id=%s after %.0fs tokens=%d",

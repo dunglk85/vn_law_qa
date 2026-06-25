@@ -86,10 +86,9 @@ class AgenticService:
             "decisions, user preferences, and any specific data mentioned. "
             "Keep the summary concise but informative.\n\n"
             "---\n"
+            + "\n".join(texts)
+            + "\n---\nSummary:"
         )
-        for t in texts:
-            prompt += f"{t}\n"
-        prompt += "\n---\nSummary:"
         result = await llm_ainvoke(chat_model, prompt, call_name="history_summarize")
         return result.content.strip()
 
@@ -119,7 +118,10 @@ class AgenticService:
             try:
                 new_summary = await self._summarize_with_llm([older_combined])
                 if existing_summary:
-                    new_summary = existing_summary + "\n" + new_summary
+                    combined = existing_summary + "\n" + new_summary
+                    if self._estimate_tokens([combined]) > config.max_history_tokens:
+                        combined = await self._summarize_with_llm([combined])
+                    new_summary = combined
                 logger.info("History compressed: %d older turns summarized", len(older))
             except Exception as exc:
                 logger.warning("Summarization failed, keeping raw history: %s", exc)
@@ -169,7 +171,7 @@ class AgenticService:
                 ),
                 timeout=config.agent_timeout,
             )
-        except TimeoutError:
+        except (asyncio.TimeoutError, OSError):
             logger.error("Supervisor timed out after %.0fs", config.agent_timeout)
             raise
 

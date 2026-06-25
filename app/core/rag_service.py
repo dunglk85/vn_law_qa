@@ -6,6 +6,7 @@ It depends only on Port interfaces injected at construction time.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 
@@ -65,16 +66,21 @@ class RAGService:
         self._retriever = retriever
         self._query_transformer = query_transformer
         self._warmed_up = False
+        self._warmup_lock = asyncio.Lock()
 
     async def _ensure_warmup(self) -> None:
-        if not self._warmed_up:
+        if self._warmed_up:
+            return
+        async with self._warmup_lock:
+            if self._warmed_up:
+                return
             try:
                 await self._vector_store.similarity_search("warmup", k=1)
             except Exception:
                 pass
             self._warmed_up = True
 
-    def _build_retriever(self, category: str | None = None, tenant_id: str | None = None) -> BaseRetriever:
+    def _build_retriever(self, category: str | None = None, tenant_id: str | None = None) -> BaseRetriever | None:
         search_kwargs: dict = {"k": config.retrieval_k}
         filter_dict: dict = {}
         if category:

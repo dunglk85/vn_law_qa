@@ -7,7 +7,7 @@ from app.exceptions import (
     ExternalServiceError,
     NotFoundError,
     RateLimitError,
-    TimeoutError,
+    RequestTimeoutError,
     ValidationError,
 )
 
@@ -69,7 +69,7 @@ class TestSpecificExceptions:
         assert error.message == "Service unavailable"
 
     def test_timeout_error(self):
-        error = TimeoutError()
+        error = RequestTimeoutError()
         assert error.status_code == 504
         assert error.message == "Operation timed out"
 

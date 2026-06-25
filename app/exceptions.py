@@ -71,7 +71,7 @@ class ExternalServiceError(AppError):
         super().__init__(message, status_code=502, details=details)
 
 
-class TimeoutError(AppError):
+class RequestTimeoutError(AppError):
     """Raised when an operation times out."""
 
     def __init__(self, message: str = "Operation timed out", details: dict[str, Any] | None = None) -> None:
