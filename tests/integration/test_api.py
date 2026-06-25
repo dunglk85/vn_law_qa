@@ -150,43 +150,29 @@ class TestAuthFlow:
             assert response.status_code == 401
 
     def test_protected_endpoint_requires_auth(self, client, mock_deps):
-        response = client.post("/ask", json={"question": "test"})
-        assert response.status_code == 401
+        with patch("app.auth.dependencies.config") as mock_config:
+            mock_config.app_api_key = "test-api-key"
+            response = client.post("/ask", json={"question": "test"})
+            assert response.status_code == 401
 
-    def test_protected_endpoint_with_valid_token(self, client, mock_deps):
-        with patch("app.auth.router.config") as mock_config:
-            mock_config.admin_username = "admin"
-            mock_config.admin_password = "admin"
-            mock_config.jwt_secret = "test-secret"
-            mock_config.jwt_algorithm = "HS256"
-            mock_config.access_token_expire_minutes = 30
-            mock_config.refresh_token_expire_days = 7
-
-            login_response = client.post("/auth/token", json={"username": "admin", "password": "admin"})
-            token = login_response.json()["access_token"]
-
-            headers = {"Authorization": f"Bearer {token}"}
+    def test_protected_endpoint_with_valid_api_key(self, client, mock_deps):
+        with patch("app.auth.dependencies.config") as mock_config:
+            mock_config.app_api_key = "test-api-key"
+            headers = {"X-API-Key": "test-api-key"}
             response = client.post("/ask", json={"question": "test"}, headers=headers)
             assert response.status_code in [200, 504]
 
 
 class TestAskEndpoint:
     def test_ask_without_auth(self, client, mock_deps):
-        response = client.post("/ask", json={"question": "test"})
-        assert response.status_code == 401
+        with patch("app.auth.dependencies.config") as mock_config:
+            mock_config.app_api_key = "test-api-key"
+            response = client.post("/ask", json={"question": "test"})
+            assert response.status_code == 401
 
-    def test_ask_with_auth(self, client, mock_deps):
-        with patch("app.auth.router.config") as mock_config:
-            mock_config.admin_username = "admin"
-            mock_config.admin_password = "admin"
-            mock_config.jwt_secret = "test-secret"
-            mock_config.jwt_algorithm = "HS256"
-            mock_config.access_token_expire_minutes = 30
-            mock_config.refresh_token_expire_days = 7
-
-            login_response = client.post("/auth/token", json={"username": "admin", "password": "admin"})
-            token = login_response.json()["access_token"]
-
-            headers = {"Authorization": f"Bearer {token}"}
+    def test_ask_with_api_key(self, client, mock_deps):
+        with patch("app.auth.dependencies.config") as mock_config:
+            mock_config.app_api_key = "test-api-key"
+            headers = {"X-API-Key": "test-api-key"}
             response = client.post("/ask", json={"question": "test"}, headers=headers)
             assert response.status_code in [200, 504]
