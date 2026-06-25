@@ -18,14 +18,20 @@ class PipelineOrchestrator:
     async def run(self, user_input: str, context: dict[str, Any] | None = None) -> str:
         ctx = dict(context or {})
         current = StageInput(prompt=user_input, context=ctx)
+        skipped: list[str] = []
 
         for name in self._order:
             stage = self._stages.get(name)
             if stage is None:
                 logger.warning("Stage '%s' not configured, skipping", name)
+                skipped.append(name)
                 continue
             logger.info("Pipeline stage: %s", name)
-            output = await stage.run(current)
+            try:
+                output = await stage.run(current)
+            except Exception as exc:
+                logger.error("Pipeline stage '%s' failed: %s", name, exc)
+                break
             ctx[f"{name}_output"] = output.content
             current = StageInput(
                 prompt=output.content,
@@ -33,6 +39,9 @@ class PipelineOrchestrator:
                 previous_output=output.content,
             )
 
+        if skipped:
+            logger.warning("Pipeline incomplete: %d stage(s) not configured (%s)",
+                           len(skipped), ", ".join(skipped))
         return current.prompt
 
     async def stream(
@@ -46,9 +55,8 @@ class PipelineOrchestrator:
         for name in self._order:
             stage = self._stages.get(name)
             if stage is None:
-                logger.warning("Stage '%s' not configured, skipping", name)
-                continue
-
+                yield {"type": "stage_error", "stage": name, "error": "Stage not configured"}
+                return
             yield {"type": "stage_start", "stage": name}
 
             try:

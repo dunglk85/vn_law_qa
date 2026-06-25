@@ -21,6 +21,5 @@ class OpenAILLMAdapter(LLMPort):
     def get_chat_model(self) -> BaseChatModel:
         if self._instance is None:
             self._instance = ChatOpenAI(model=self._model, openai_api_key=self._api_key)
-            logger.info("Created ChatOpenAI model=%s key=%s***",
-                        self._model, (self._api_key or "")[:4])
+            logger.info("Created ChatOpenAI model=%s", self._model)
         return self._instance

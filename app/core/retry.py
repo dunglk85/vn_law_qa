@@ -41,7 +41,7 @@ async def retry_with_backoff(
                 raise
             if attempt < max_attempts - 1:
                 delay = min(base_delay * (2 ** attempt), max_delay)
-                jitter = random.uniform(0, delay)
+                jitter = random.uniform(0, delay * 0.1)
                 total_delay = delay + jitter
                 logger.warning(
                     "%s attempt %d/%d failed: %s. Retrying in %.2fs",

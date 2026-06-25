@@ -39,7 +39,11 @@ def _load_prompts() -> dict[str, str]:
     try:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
-        _LOADED_PROMPTS = {k: v for k, v in (data or {}).items() if v}
+        if not isinstance(data, dict):
+            logger.warning("Prompts file has invalid structure, expected a dict, got %s", type(data).__name__)
+            _LOADED_PROMPTS = {}
+            return _LOADED_PROMPTS
+        _LOADED_PROMPTS = {k: v if isinstance(v, str) else str(v) for k, v in data.items() if v}
         _LAST_LOADED = now
         logger.info("Loaded %d prompts from %s", len(_LOADED_PROMPTS), path)
     except Exception as exc:

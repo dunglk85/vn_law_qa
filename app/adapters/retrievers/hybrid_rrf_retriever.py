@@ -22,13 +22,14 @@ class _HybridRRFRetriever(BaseRetriever):
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
     ) -> list[Document]:
         sparse_k = self._k * 2
-        original_k = self._sparse_retriever.k
+        original_k = getattr(self._sparse_retriever, "k", None)
+        self._sparse_retriever.k = sparse_k
         try:
-            self._sparse_retriever.k = sparse_k
             dense_docs = self._dense_retriever.invoke(query)
             sparse_docs = self._sparse_retriever.invoke(query)
         finally:
-            self._sparse_retriever.k = original_k
+            if original_k is not None:
+                self._sparse_retriever.k = original_k
 
         scores: dict[str, float] = {}
         doc_map: dict[str, Document] = {}

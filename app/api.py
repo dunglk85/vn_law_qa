@@ -162,6 +162,19 @@ async def track_errors(request: Request, call_next):
     return response
 
 
+@app.exception_handler(RateLimitError)
+async def rate_limit_handler(request: Request, exc: RateLimitError):
+    try:
+        client_ip = _get_client_ip(request)
+    except Exception:
+        client_ip = "unknown"
+    logger.warning("Rate limit exceeded from %s", client_ip)
+    return JSONResponse(
+        status_code=429,
+        content={"ok": False, "message": "Rate limit exceeded. Try again later."},
+    )
+
+
 @app.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError):
     """Handle AppError exceptions with structured JSON responses."""
@@ -228,11 +241,15 @@ async def metrics(_user: dict = Depends(require_role("admin"))) -> dict:
 
 
 def _get_client_ip(request: Request) -> str:
+    import ipaddress
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        ip = forwarded.split(",")[0].strip()
-        if ip and ip.count(".") == 3:
-            return ip
+        ip_str = forwarded.split(",")[0].strip()
+        try:
+            ipaddress.ip_address(ip_str)
+            return ip_str
+        except ValueError:
+            pass
     return request.client.host if request.client else "unknown"
 
 

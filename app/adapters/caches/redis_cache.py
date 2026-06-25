@@ -30,10 +30,11 @@ class RedisCacheAdapter(CachePort):
         if self._cache_instance is not None:
             logger.info("CACHE: Redis semantic cache already active, skipping re-init.")
             return
-        self._cache_instance = RedisSemanticCache(
+        instance = RedisSemanticCache(
             redis_url=self._redis_url,
             embeddings=self._embeddings,
             distance_threshold=self._distance_threshold,
         )
-        set_llm_cache(self._cache_instance)
+        set_llm_cache(instance)
+        self._cache_instance = instance
         logger.info("CACHE: Redis semantic cache activated.")
