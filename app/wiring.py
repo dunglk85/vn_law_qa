@@ -6,6 +6,10 @@ layers. It is NOT imported by any checked layer, so it can freely depend on both
 from __future__ import annotations
 
 import logging
+import time
+from pathlib import Path
+
+import yaml
 
 from app.config import config
 from app.factory import create_llm_with_model, create_pipeline_stage
@@ -13,22 +17,52 @@ from app.ports.pipeline_stage import PipelineStagePort
 
 logger = logging.getLogger(__name__)
 
+_LOADED_PROMPTS: dict[str, str] | None = None
+_LAST_LOADED: float = 0.0
+
+
+def _load_prompts() -> dict[str, str]:
+    global _LOADED_PROMPTS, _LAST_LOADED
+
+    ttl = config.pipeline_prompts_cache_ttl
+    now = time.monotonic()
+    if _LOADED_PROMPTS is not None and (ttl == 0 or now - _LAST_LOADED < ttl):
+        return _LOADED_PROMPTS
+
+    path = Path(config.pipeline_prompts_path)
+    if not path.is_file():
+        if _LOADED_PROMPTS is None:
+            logger.warning("Prompts file not found at %s — using stage defaults", path)
+            _LOADED_PROMPTS = {}
+        return _LOADED_PROMPTS
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        _LOADED_PROMPTS = {k: v for k, v in (data or {}).items() if v}
+        _LAST_LOADED = now
+        logger.info("Loaded %d prompts from %s", len(_LOADED_PROMPTS), path)
+    except Exception as exc:
+        logger.error("Failed to reload prompts from %s: %s", path, exc)
+
+    return _LOADED_PROMPTS or {}
+
 
 def _stage_config(name: str) -> dict:
-    """Build a config dict for a pipeline stage from env vars."""
+    """Build a config dict for a pipeline stage from prompts file."""
+    prompts = _load_prompts()
     cfg: dict = {}
-    prompt = getattr(config, f"pipeline_prompt_{name}", "")
+    prompt = prompts.get(name)
     if prompt:
-        cfg["system_prompt"] = prompt
+        cfg["system_prompt"] = prompt.strip()
     return cfg
 
 
 def create_pipeline_orchestrator(default_llm):
     """Build the pipeline, resolving each stage's model + prompt independently.
 
-    Env var ``PIPELINE_MODEL_<STAGE>`` overrides the model per stage.
-    Env var ``PIPELINE_PROMPT_<STAGE>`` overrides the system prompt per stage.
-    Falls back to defaults when not set.
+    Models are set via ``PIPELINE_MODEL_<STAGE>`` env vars (empty = use default).
+    Prompts are read from ``config/prompts.yaml`` (missing entry = use stage default).
     """
     from app.core.pipeline_orchestrator import PipelineOrchestrator
 

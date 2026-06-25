@@ -199,12 +199,9 @@ class AppConfig:
     pipeline_model_code_writer: str = _str_env("PIPELINE_MODEL_CODE_WRITER", "")
     pipeline_model_evaluator: str = _str_env("PIPELINE_MODEL_EVALUATOR", "")
 
-    pipeline_prompt_router: str = _str_env("PIPELINE_PROMPT_ROUTER", "")
-    pipeline_prompt_planner: str = _str_env("PIPELINE_PROMPT_PLANNER", "")
-    pipeline_prompt_reasoner: str = _str_env("PIPELINE_PROMPT_REASONER", "")
-    pipeline_prompt_tool_caller: str = _str_env("PIPELINE_PROMPT_TOOL_CALLER", "")
-    pipeline_prompt_code_writer: str = _str_env("PIPELINE_PROMPT_CODE_WRITER", "")
-    pipeline_prompt_evaluator: str = _str_env("PIPELINE_PROMPT_EVALUATOR", "")
+    pipeline_prompts_path: str = _str_env("PIPELINE_PROMPTS_PATH", "config/prompts.yaml")
+    pipeline_prompts_cache_ttl: int = _int_env("PIPELINE_PROMPTS_CACHE_TTL", 60)
+    # seconds between re-reading prompts.yaml; 0 = always re-read
 
 
 # Singleton — import this everywhere instead of reading os.getenv directly
